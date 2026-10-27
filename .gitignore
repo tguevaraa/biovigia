@@ -1,0 +1,30 @@
+# Entorno de Python
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Django
+servidor/db.sqlite3
+servidor/media/
+servidor/staticfiles/
+*.log
+.env
+.env.*
+
+# Visión: los pesos y los videos no van al repositorio (pesan demasiado)
+vision/modelos/*.pt
+vision/modelos/*.onnx
+vision/cola/
+datos/videos/
+datos/imagenes/
+datos/anotaciones/
+
+# Sistema y editores
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

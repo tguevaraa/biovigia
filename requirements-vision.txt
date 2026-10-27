@@ -1,0 +1,6 @@
+# Servicio de visión y conjunto de datos — Francisco y Ezequiel
+ultralytics==8.*
+opencv-python==4.*
+numpy>=1.26
+requests==2.*
+scikit-learn==1.*

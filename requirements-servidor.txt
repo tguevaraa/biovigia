@@ -1,0 +1,7 @@
+# Servidor de aplicación — Darlyn (backend) y Cristofer (pantallas)
+Django==5.0.*
+djangorestframework==3.15.*
+Pillow==10.*
+python-decouple==3.8
+# Se activa al pasar a PostgreSQL antes de la demo (BVIA-33)
+# psycopg[binary]==3.1.*
