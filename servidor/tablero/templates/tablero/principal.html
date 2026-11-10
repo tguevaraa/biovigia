@@ -1,0 +1,110 @@
+{% extends "tablero/base.html" %}
+{% load biovigia %}
+{% block titulo %}Tablero principal{% endblock %}
+{% block contenido %}
+<div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-4">
+  <div>
+    <h1 class="bv-titulo">Tablero principal</h1>
+    <p class="bv-subtitulo">Turno {{ turno.etiqueta|lower }}, {{ fecha|date:"l d/m/Y" }} · actualizado a las
+      <span id="bv-actualizado">{{ r.actualizado_en|slice:"11:16" }}</span></p>
+  </div>
+  <form method="get" class="d-flex flex-wrap gap-2 align-items-end no-print">
+    <div><label class="form-label mb-1" for="f-fecha">Fecha</label>
+      <input id="f-fecha" type="date" name="fecha" value="{{ fecha|date:'Y-m-d' }}" class="form-control"></div>
+    <div><label class="form-label mb-1" for="f-turno">Turno</label>
+      <select id="f-turno" name="turno" class="form-select">
+        {% for t in turnos %}<option value="{{ t.codigo }}" {% if t.codigo == turno.codigo %}selected{% endif %}>{{ t.etiqueta }}</option>{% endfor %}
+      </select></div>
+    <button class="btn btn-outline-primary" type="submit">Ver</button>
+    <a class="btn btn-outline-primary" href="{% url 'tablero:reportes' %}">Ir a reportes e indicadores</a>
+  </form>
+</div>
+
+{% for v in r.vision %}{% if not v.conectado %}
+<div class="bv-aviso bv-off mb-3" role="alert"><i class="bi bi-wifi-off" aria-hidden="true"></i>
+  <div><strong>Sin conexión con el servicio de visión de {{ v.box }}.</strong>
+  {% if v.ultimo_latido %}Último contacto: {{ v.ultimo_latido|slice:"11:16" }}.{% else %}Todavía no se ha conectado.{% endif %}
+  Mientras dure, el tiempo se marca como no observado y no como cero eventos.</div></div>
+{% elif not v.camara_conectada %}
+<div class="bv-aviso bv-off mb-3" role="alert"><i class="bi bi-camera-video-off" aria-hidden="true"></i>
+  <div><strong>La cámara de {{ v.box }} está desconectada.</strong> El lapso se registra como no observado.</div></div>
+{% endif %}{% endfor %}
+
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md"><div class="bv-kpi"><div class="etq">Descartes registrados</div>
+    <div class="valor">{{ r.kpis.descartes }}</div>
+    <div class="nota">De {{ inicio_turno|date:"H:i" }} a {{ fin_turno|date:"H:i" }}</div></div></div>
+  <div class="col-6 col-md"><div class="bv-kpi"><div class="etq">No conformes</div>
+    <div class="valor">{{ r.kpis.no_conformes }}</div>
+    <div class="nota">{% if r.kpis.descartes %}{{ r.kpis.proporcion_no_conformes|porcentaje }} del total{% else %}Sin descartes aún{% endif %}</div></div></div>
+  <div class="col-6 col-md"><div class="bv-kpi"><div class="etq">Cumplimiento</div>
+    <div class="valor">{{ r.kpis.cumplimiento|porcentaje }}</div>
+    <div class="nota">{% if r.kpis.descartes %}Descartes en el recipiente rojo{% else %}Sin datos: no es 100 %{% endif %}</div></div></div>
+  <div class="col-6 col-md"><div class="bv-kpi"><div class="etq">Recipientes contaminados</div>
+    <div class="valor">{{ r.kpis.recipientes_contaminados }}</div>
+    <div class="nota">{% if r.kpis.recipientes_contaminados %}Esperan recambio{% else %}Ninguno{% endif %}</div></div></div>
+  <div class="col-12 col-md"><div class="bv-kpi"><div class="etq">Periodos no observados</div>
+    <div class="valor">{{ r.kpis.periodos_no_observados }}</div>
+    <div class="nota">{% if r.kpis.minutos_sin_observar %}{{ r.kpis.minutos_sin_observar|duracion }} sin observar{% else %}Observación continua{% endif %}</div></div></div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-lg-8">
+    <section class="bv-card h-100" aria-labelledby="t-hora">
+      <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <h2 id="t-hora" class="mb-0">Descartes por hora</h2>
+        <div class="bv-leyenda"><span><i class="t"></i>Total</span><span><i class="n"></i>No conformes</span>
+          <span><i class="s"></i>Sin observar</span></div>
+      </div>
+      <div class="bv-barras mt-4" role="img" aria-label="{{ suma_texto }}">
+        {% for h in r.por_hora %}
+        <div class="col {% if h.estado == 'sin_observar' %}sin-observar{% elif h.estado == 'parcial' %}parcial{% endif %}"
+             title="{{ h.hora }} · {% if h.total is None %}{% if h.estado == 'pendiente' %}pendiente{% else %}sin observar{% endif %}{% else %}{{ h.total }} descartes, {{ h.no_conformes }} no conformes{% endif %}{% if h.detalle %} · {{ h.detalle }}{% endif %}">
+          {% if h.total is not None %}
+          <div class="barra total" style="height: {{ h.total|altura:maximo }}%">{% if h.total %}<span>{{ h.total }}</span>{% endif %}</div>
+          <div class="barra nc" style="height: {{ h.no_conformes|altura:maximo }}%">{% if h.no_conformes %}<span>{{ h.no_conformes }}</span>{% endif %}</div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      <div class="bv-ejes">
+        {% for h in r.por_hora %}<div>{{ h.hora }}<small>{% if h.estado == 'pendiente' %}pendiente{% elif h.estado == 'sin_observar' %}sin observar{% elif h.estado == 'parcial' %}{{ h.minutos_sin_observar }} min sin observar{% elif h.en_curso %}en curso{% else %}&nbsp;{% endif %}</small></div>{% endfor %}
+      </div>
+      <p class="small mt-3 mb-0">{{ suma_texto }}</p>
+    </section>
+  </div>
+  <div class="col-lg-4">
+    <section class="bv-card h-100 d-flex flex-column" aria-labelledby="t-rec">
+      <div class="d-flex justify-content-between align-items-center"><h2 id="t-rec" class="mb-2">Estado de recipientes</h2>
+        <a class="small fw-semibold" href="{% url 'tablero:recipientes' %}">Ver todos</a></div>
+      <ul class="list-unstyled bv-lista-estado mb-3">
+        {% for rec in recipientes %}
+        <li><span><span class="bv-cuadro {{ rec.tipo }}" aria-hidden="true"></span> {{ rec.box.etiqueta }} · {% if rec.tipo == "rojo" %}Rojo{% else %}Común{% endif %}</span>
+          {% include "tablero/parciales/estado.html" with estado=rec.estado %}</li>
+        {% empty %}<li class="text-muted">No hay recipientes registrados.</li>{% endfor %}
+      </ul>
+      {% for rec in recipientes %}{% if rec.contaminado %}
+        <p class="small mt-auto mb-0">Contaminado desde las {{ rec.contaminado_desde|local|date:"H:i" }}
+        {% if rec.evento_causa_id %}(<a href="{% url 'tablero:evento' rec.evento_causa_id %}">EV-{{ rec.evento_causa_id|stringformat:"04d" }}</a>){% endif %}</p>
+      {% endif %}{% endfor %}
+    </section>
+  </div>
+</div>
+
+<section aria-labelledby="t-ult">
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <h2 id="t-ult" class="fs-6 fw-bold mb-0">Últimos eventos</h2>
+    <a class="small fw-semibold" href="{% url 'tablero:eventos' %}?desde={{ fecha|date:'Y-m-d' }}&hasta={{ fecha|date:'Y-m-d' }}&turno={{ turno.codigo }}">Ver todos los eventos</a>
+  </div>
+  <div class="bv-tabla-wrap">
+    {% include "tablero/parciales/tabla_eventos.html" with lista=ultimos.items vacio="Todavía no hay descartes en este turno." %}
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}
+<script>
+  // Observer: si cambian los indicadores o el estado de un recipiente, se recarga la vista.
+  BioVigIA.observar("{% url 'api:tablero' %}?fecha={{ fecha|date:'Y-m-d' }}&turno={{ turno.codigo }}",
+    (d) => JSON.stringify([d.kpis, d.recipientes, d.vision.map(v => [v.conectado, v.camara_conectada])]));
+</script>
+{% endblock %}

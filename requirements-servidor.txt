@@ -1,7 +1,9 @@
 # Servidor de aplicación — Darlyn (backend) y Cristofer (pantallas)
-Django==5.0.*
+# Django 5.1 admite Python 3.10 a 3.13.
+Django==5.1.*
 djangorestframework==3.15.*
-Pillow==10.*
+Pillow>=10.4,<12
 python-decouple==3.8
+reportlab==4.*
 # Se activa al pasar a PostgreSQL antes de la demo (BVIA-33)
-# psycopg[binary]==3.1.*
+# psycopg[binary]==3.2.*

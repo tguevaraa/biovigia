@@ -1,0 +1,33 @@
+{% extends "tablero/config_base.html" %}
+{% load biovigia %}
+{% block titulo %}Usuarios y roles{% endblock %}
+{% block titulo_config %}Usuarios y roles{% endblock %}
+{% block contenido_config %}
+<div class="row g-3">
+  <div class="col-lg-7">
+    <div class="bv-tabla-wrap">
+      <table class="bv-tabla">
+        <thead><tr><th scope="col">Usuario</th><th scope="col">Nombre</th><th scope="col">Rol</th><th scope="col">Estado</th><th scope="col">Último acceso</th><th></th></tr></thead>
+        <tbody>
+        {% for u in usuarios %}
+          <tr><td class="mono">{{ u.username }}</td><td>{{ u.get_full_name|default:"—" }}</td><td>{{ u.get_rol_display }}</td>
+            <td>{% if u.is_active %}<span class="bv-badge bv-ok"><i class="bi bi-check" aria-hidden="true"></i> Activa</span>{% else %}<span class="bv-badge bv-off"><i class="bi bi-slash-circle" aria-hidden="true"></i> Desactivada</span>{% endif %}</td>
+            <td class="mono small">{{ u.last_login|local|date:"d/m/Y H:i"|default:"—" }}</td>
+            <td class="text-end"><a href="{% url 'tablero:usuario_editar' u.pk %}">Editar</a></td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="small text-muted mt-2">Las cuentas no se borran: se desactivan, para conservar la trazabilidad de la bitácora.</p>
+  </div>
+  <div class="col-lg-5">
+    <form method="post" class="bv-card" novalidate>
+      {% csrf_token %}
+      <h2>Nueva cuenta</h2>
+      {% for e in form.non_field_errors %}<div class="bv-aviso bv-bad mb-2">{{ e }}</div>{% endfor %}
+      {% include "tablero/parciales/campos.html" %}
+      <button class="btn btn-primary" type="submit">Crear cuenta</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

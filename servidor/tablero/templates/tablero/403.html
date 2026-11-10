@@ -1,0 +1,10 @@
+{% extends "tablero/base.html" %}
+{% block titulo %}Acceso no autorizado{% endblock %}
+{% block contenido %}
+<div class="bv-card text-center mx-auto my-5" style="max-width: 520px">
+  <i class="bi bi-shield-lock fs-1" style="color: var(--off-ink)" aria-hidden="true"></i>
+  <h1 class="bv-titulo mt-2">Acceso no autorizado</h1>
+  <p class="text-muted">Tu rol no tiene permiso para abrir esta pantalla. Si crees que deberías tener acceso, pídelo al administrador del sistema.</p>
+  <a class="btn btn-primary" href="{{ destino }}">Volver a mi pantalla inicial</a>
+</div>
+{% endblock %}

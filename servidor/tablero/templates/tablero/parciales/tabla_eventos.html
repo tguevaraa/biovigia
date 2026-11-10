@@ -1,0 +1,25 @@
+{% load biovigia %}
+<table class="bv-tabla">
+  <caption class="visually-hidden">Eventos de descarte</caption>
+  <thead><tr>
+    <th scope="col">Evento</th><th scope="col">Fecha y hora</th><th scope="col">Turno</th>
+    <th scope="col">Box</th><th scope="col">Recipiente</th><th scope="col">Veredicto</th>
+    <th scope="col" class="text-end">Confianza</th><th scope="col" class="text-end">Evidencia</th>
+  </tr></thead>
+  <tbody>
+  {% for e in lista %}
+    <tr>
+      <td class="mono text-muted">{{ e.codigo }}</td>
+      <td class="mono">{{ e.ocurrido_en|local|date:"d/m/Y H:i:s" }}</td>
+      <td>{% turno_texto e.turno %}</td>
+      <td>{{ e.recipiente.box.etiqueta }}</td>
+      <td>{% include "tablero/parciales/recipiente.html" with tipo=e.recipiente.tipo %}</td>
+      <td>{% include "tablero/parciales/veredicto.html" with veredicto=e.veredicto %}</td>
+      <td class="mono text-end">{{ e.confianza|confianza }}</td>
+      <td class="text-end"><a href="{% url 'tablero:evento' e.pk %}">{% if e.evidencia_disponible %}Ver evidencia{% else %}Ver detalle{% endif %}</a></td>
+    </tr>
+  {% empty %}
+    <tr><td colspan="8" class="text-center text-muted py-4">{{ vacio|default:"No hay eventos." }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>

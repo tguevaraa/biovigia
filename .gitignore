@@ -21,6 +21,13 @@ vision/cola/
 datos/videos/
 datos/imagenes/
 datos/anotaciones/
+datos/dataset/
+datos/runs/
+datos/sinteticos/
+datos/dataset.yaml
+vision/.env
+herramientas/.ultimo_lote_simulador
+*.sqlite3
 
 # Sistema y editores
 .DS_Store

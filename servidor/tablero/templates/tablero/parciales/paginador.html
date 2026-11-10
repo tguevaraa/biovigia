@@ -1,0 +1,19 @@
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 px-3 py-2 border-top">
+  <small class="text-muted">{% if pagina.total %}Mostrando {{ pagina.desde }}–{{ pagina.hasta }} de {{ pagina.total }} eventos{% else %}Sin eventos{% endif %}</small>
+  {% if pagina.paginas > 1 %}
+  <nav aria-label="Paginación de eventos">
+    <ul class="pagination pagination-sm mb-0 bv-paginador">
+      <li class="page-item {% if pagina.pagina == 1 %}disabled{% endif %}">
+        <a class="page-link" href="?{{ consulta }}{% if consulta %}&{% endif %}pagina={{ pagina.pagina|add:'-1' }}">Anterior</a></li>
+      {% for n in pagina.rango_paginas %}
+        {% if n %}
+        <li class="page-item {% if n == pagina.pagina %}active{% endif %}">
+          <a class="page-link" href="?{{ consulta }}{% if consulta %}&{% endif %}pagina={{ n }}" {% if n == pagina.pagina %}aria-current="page"{% endif %}>{{ n }}</a></li>
+        {% else %}<li class="page-item disabled"><span class="page-link">…</span></li>{% endif %}
+      {% endfor %}
+      <li class="page-item {% if pagina.pagina == pagina.paginas %}disabled{% endif %}">
+        <a class="page-link" href="?{{ consulta }}{% if consulta %}&{% endif %}pagina={{ pagina.pagina|add:'1' }}">Siguiente</a></li>
+    </ul>
+  </nav>
+  {% endif %}
+</div>

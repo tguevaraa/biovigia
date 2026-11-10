@@ -1,0 +1,23 @@
+{% extends "tablero/config_base.html" %}
+{% block titulo %}Parámetros del sistema{% endblock %}
+{% block titulo_config %}Parámetros del sistema{% endblock %}
+{% block contenido_config %}
+<form method="post" class="bv-card" style="max-width: 760px" novalidate>
+  {% csrf_token %}
+  {% for e in form.non_field_errors %}<div class="bv-aviso bv-bad mb-3">{{ e }}</div>{% endfor %}
+  <div class="row g-3">
+  {% for campo in form %}
+    <div class="col-md-6">
+      <label class="form-label" for="{{ campo.id_for_label }}">{{ campo.label }}</label>
+      {{ campo }}
+      {% for e in campo.errors %}<div class="small mt-1" style="color: var(--bad-ink)"><i class="bi bi-x-circle" aria-hidden="true"></i> {{ e }}</div>{% endfor %}
+      <div class="form-text">{{ campo.help_text }}</div>
+    </div>
+  {% endfor %}
+  </div>
+  <div class="d-flex flex-wrap gap-2 align-items-center mt-4">
+    <button class="btn btn-primary" type="submit">Guardar parámetros</button>
+    <span class="small text-muted">Última modificación: {{ actual.actualizado_en|date:"d/m/Y H:i" }}{% if actual.actualizado_por %} por {{ actual.actualizado_por.nombre_visible }}{% endif %}</span>
+  </div>
+</form>
+{% endblock %}

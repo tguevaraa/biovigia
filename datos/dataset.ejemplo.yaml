@@ -1,0 +1,16 @@
+# Conjunto de datos de BioVigIA en formato YOLO (BVIA-38 a BVIA-40).
+# Copia este archivo como datos/dataset.yaml. Las imágenes y las anotaciones NO se suben
+# al repositorio (ver .gitignore); se comparten por Drive.
+#
+# Estructura esperada (partición 80/20 por VIDEO, no por imagen):
+#   datos/dataset/images/train/*.jpg   datos/dataset/labels/train/*.txt
+#   datos/dataset/images/val/*.jpg     datos/dataset/labels/val/*.txt
+path: ../datos/dataset
+train: images/train
+val: images/val
+
+# Las tres clases del OE1. El orden importa: es el índice de cada clase en los .txt.
+names:
+  0: gasa
+  1: recipiente_rojo
+  2: recipiente_comun

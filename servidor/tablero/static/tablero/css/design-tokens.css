@@ -1,0 +1,64 @@
+/* BioVigIA · design-tokens.css
+ * Paleta base de la sección 8.3 del informe. Ningún color se escribe a mano en las
+ * pantallas: todo se consume desde estas variables, y el modo oscuro solo las redefine.
+ * El color nunca va solo: cada estado lleva además icono y texto.
+ */
+:root {
+  /* Colores base */
+  --color-primary: #1C3247;
+  --color-primary-hover: #2A4560;
+  --color-primary-ink: #FFFFFF;
+
+  --ok-ink: #1E5E22;   --ok-bg: #E8F3E8;   --ok-line: #2E7D32;
+  --bad-ink: #8E1C16;  --bad-bg: #FBEAE9;  --bad-line: #B3261E;
+  --warn-ink: #8A3F00; --warn-bg: #FFF1E3; --warn-line: #E8710A;
+  --off-ink: #59616B;  --off-bg: #EEF0F3;  --off-line: #A5ACB5;
+
+  /* Objetos físicos */
+  --recipiente-rojo: #B3261E;
+  --recipiente-comun: #22272E;
+
+  /* Series de gráficos (par validado para daltonismo) */
+  --serie-total: #3E6EA8;
+  --serie-nc: #C0392B;
+  --calor-0: #F2F5F9; --calor-1: #C9D6E6; --calor-2: #8FA8C8; --calor-3: #3E5F86; --calor-4: #1C3247;
+
+  /* Superficies y texto */
+  --surface: #F4F6F9;
+  --surface-card: #FFFFFF;
+  --surface-sunken: #EEF1F5;
+  --text: #1B2430;
+  --text-muted: #59616B;
+  --border: #D9DEE5;
+  --focus: #3E6EA8;
+
+  /* Tipografía: Inter para texto, IBM Plex Mono para cifras y códigos */
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, "Liberation Mono", monospace;
+  --fs-xs: .75rem; --fs-sm: .8125rem; --fs-md: .9375rem; --fs-lg: 1.125rem; --fs-xl: 1.5rem; --fs-2xl: 1.875rem;
+
+  /* Espaciado en múltiplos de 4 px, radios, sombras, área táctil */
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-6: 24px; --sp-8: 32px;
+  --radius-sm: 4px; --radius-md: 6px; --radius-lg: 10px; --radius-pill: 999px;
+  --shadow-1: 0 1px 2px rgba(16, 24, 40, .06);
+  --shadow-2: 0 4px 12px rgba(16, 24, 40, .10);
+  --touch: 44px;
+
+  /* Trama del periodo no observado */
+  --trama: repeating-linear-gradient(135deg, var(--off-bg) 0 6px, transparent 6px 12px);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --color-primary: #A9C2DD; --color-primary-hover: #C3D5E8; --color-primary-ink: #0E1824;
+    --ok-ink: #9AD49D;  --ok-bg: #16301A;  --ok-line: #4CAF50;
+    --bad-ink: #F2A49E; --bad-bg: #3A1513; --bad-line: #E35D53;
+    --warn-ink: #FFC48A; --warn-bg: #3B2410; --warn-line: #F08A2E;
+    --off-ink: #A5ACB5; --off-bg: #262C34; --off-line: #5B636D;
+    --recipiente-comun: #8A939E;
+    --serie-total: #7FA6D6; --serie-nc: #E57368;
+    --calor-0: #1B222B; --calor-1: #26384D; --calor-2: #3B5677; --calor-3: #6F90B8; --calor-4: #A9C2DD;
+    --surface: #10151B; --surface-card: #171D24; --surface-sunken: #1C232C;
+    --text: #E6EAEF; --text-muted: #A5ACB5; --border: #2C343E; --focus: #7FA6D6;
+  }
+}

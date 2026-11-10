@@ -1,0 +1,10 @@
+{% extends "tablero/base.html" %}
+{% block contenido %}
+<h1 class="bv-titulo mb-2">{% block titulo_config %}Configuración{% endblock %}</h1>
+<ul class="nav bv-tabs border-bottom mb-4">
+  <li class="nav-item"><a class="nav-link {% if tab == 'zonas' %}active{% endif %}" href="{% url 'tablero:zonas' %}">Zonas de recipientes</a></li>
+  <li class="nav-item"><a class="nav-link {% if tab == 'parametros' %}active{% endif %}" href="{% url 'tablero:parametros' %}">Parámetros del sistema</a></li>
+  <li class="nav-item"><a class="nav-link {% if tab == 'usuarios' %}active{% endif %}" href="{% url 'tablero:usuarios' %}">Usuarios y roles</a></li>
+</ul>
+{% block contenido_config %}{% endblock %}
+{% endblock %}

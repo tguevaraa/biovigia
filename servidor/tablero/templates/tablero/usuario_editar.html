@@ -1,0 +1,13 @@
+{% extends "tablero/config_base.html" %}
+{% block titulo %}Editar {{ u.username }}{% endblock %}
+{% block titulo_config %}Usuarios y roles{% endblock %}
+{% block contenido_config %}
+<nav class="mb-3 small"><a href="{% url 'tablero:usuarios' %}"><i class="bi bi-arrow-left" aria-hidden="true"></i> Usuarios</a></nav>
+<form method="post" class="bv-card" style="max-width: 560px" novalidate>
+  {% csrf_token %}
+  <h2>Editar <span class="mono">{{ u.username }}</span></h2>
+  {% for e in form.non_field_errors %}<div class="bv-aviso bv-bad mb-2">{{ e }}</div>{% endfor %}
+  {% include "tablero/parciales/campos.html" %}
+  <button class="btn btn-primary" type="submit">Guardar cambios</button>
+</form>
+{% endblock %}

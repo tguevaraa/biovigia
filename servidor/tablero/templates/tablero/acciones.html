@@ -1,0 +1,45 @@
+{% extends "tablero/base.html" %}
+{% load biovigia %}
+{% block titulo %}Acciones correctivas{% endblock %}
+{% block contenido %}
+<div class="mb-4">
+  <h1 class="bv-titulo">Acciones correctivas</h1>
+  <p class="bv-subtitulo">Notas del responsable de bioseguridad asociadas a uno o varios eventos no conformes. Describen la medida sobre el proceso, no sobre personas.</p>
+</div>
+<div class="row g-3">
+  <div class="col-lg-6">
+    <form method="post" class="bv-card">
+      {% csrf_token %}
+      <h2>Nueva acción</h2>
+      <div class="mb-3"><label class="form-label" for="descripcion">Descripción</label>
+        <textarea id="descripcion" name="descripcion" class="form-control" rows="3" maxlength="1000" required
+          placeholder="Ej.: Se colocó un letrero junto al recipiente rojo indicando dónde va la gasa.">{{ datos.descripcion }}</textarea></div>
+      <div class="mb-3"><label class="form-label" for="responsable">Área o cargo responsable <span class="text-muted fw-normal">(opcional)</span></label>
+        <input id="responsable" name="responsable" class="form-control" maxlength="120" value="{{ datos.responsable }}" placeholder="Ej.: Coordinación de toma de muestras"></div>
+      <fieldset class="mb-3"><legend class="form-label">Eventos no conformes sin acción</legend>
+        <div style="max-height: 280px; overflow:auto" class="border rounded p-2">
+        {% for e in pendientes %}
+          <div class="form-check py-1">
+            <input class="form-check-input" type="checkbox" name="eventos" value="{{ e.pk }}" id="ev{{ e.pk }}"
+              {% if e.pk|stringformat:"s" in preseleccion %}checked{% endif %}>
+            <label class="form-check-label small" for="ev{{ e.pk }}"><span class="mono">{{ e.codigo }}</span> · {{ e.ocurrido_en|local|date:"d/m H:i" }} · {{ e.recipiente.box.etiqueta }}</label>
+          </div>
+        {% empty %}<p class="small text-muted mb-0">No hay eventos no conformes pendientes de acción.</p>{% endfor %}
+        </div></fieldset>
+      <button class="btn btn-primary" type="submit" {% if not pendientes %}disabled{% endif %}>Guardar acción</button>
+    </form>
+  </div>
+  <div class="col-lg-6">
+    <section class="bv-card" aria-labelledby="t-reg">
+      <h2 id="t-reg">Registradas</h2>
+      {% for a in acciones %}
+        <div class="border-bottom pb-2 mb-2">
+          <div class="small text-muted mono">{{ a.registrada_en|local|date:"d/m/Y H:i" }}{% if a.responsable %} · {{ a.responsable }}{% endif %}</div>
+          <div>{{ a.descripcion }}</div>
+          <div class="small">{% for e in a.eventos.all %}<a class="me-2 mono" href="{% url 'tablero:evento' e.pk %}">{{ e.codigo }}</a>{% endfor %}</div>
+        </div>
+      {% empty %}<p class="small text-muted mb-0">Todavía no hay acciones correctivas.</p>{% endfor %}
+    </section>
+  </div>
+</div>
+{% endblock %}

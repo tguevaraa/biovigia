@@ -274,3 +274,58 @@ cliente los horarios reales**; mientras tanto: mañana 07:00–12:59, tarde 13:0
 | Fecha | Cambio | Quién |
 |---|---|---|
 | 27/10/2026 | Versión 1, congelada. | Tommy |
+| 09/11/2026 | Implementación v1. Solo adiciones opcionales (sección 10); ningún campo quitado ni renombrado. | Tommy |
+
+---
+
+## 10. Lo que añadió la implementación (compatible con v1)
+
+Todo lo de esta sección es **nuevo y opcional** según la regla 3 de la sección 9: quien
+no lo use no se rompe.
+
+### 10.1 Errores
+
+Todos los errores siguen la forma `{"error", "campo"?, "detalle"}`. Códigos usados:
+`validacion` (422), `no_autenticado` (401), `acceso_denegado` (403), `no_encontrado`
+(404), `no_contaminado` (409), `camara_insuficiente` (409).
+
+### 10.2 Servicio de visión → servidor (token de servicio)
+
+| Ruta | Para qué |
+|---|---|
+| `POST /api/v1/salud` | Latido cada 10 s: `box`, `camara_conectada`, `fps`, `zonas_alineadas`, `modelo`, `cola_pendientes` y `tramos: [{inicio, fin}]` observados. **Lo que no cubre un tramo es periodo no observado** (RNF-06), incluida una caída total del borde. |
+| `GET /api/v1/configuracion?box=box-2` | Parámetros de PAN-10 y zonas de PAN-09. La visión la consulta cada 30 s (RNF-16). |
+| `PUT /api/v1/boxes/{box}/referencia` | `{"imagen_jpeg_b64"}`: fotograma de la escena **vacía** para trazar las zonas. Se reemplaza; no es evidencia. |
+
+### 10.3 Tablero (`GET /api/v1/tablero`)
+
+- Si no se envía `turno`, se usa el turno en curso.
+- `por_hora[].estado` admite también **`parcial`**: la hora se observó en parte. Lleva
+  `total` (no nulo), `minutos_sin_observar` y `detalle`. Es el estado «parcial» de la
+  Tabla 35 del informe. Un cliente v1 que no lo conozca debe tratarlo como `observado`.
+- `por_hora[].en_curso` (booleano) marca la hora actual.
+- `kpis.minutos_sin_observar` y `kpis.proporcion_no_conformes`.
+- `kpis.cumplimiento` va en `null` cuando no hubo descartes (no es 100 %).
+- `vision: [{box, conectado, camara_conectada, fps, ultimo_latido}]` para el aviso
+  «sin conexión con el servicio de visión» (Tabla 35).
+
+### 10.4 Eventos
+
+- `evidencia.url` apunta a `/api/v1/eventos/{id}/evidencia`: la imagen **no** se publica en
+  `/media/`; se sirve por una ruta que comprueba el rol y deja constancia en la bitácora
+  (RNF-14). Sin recorte: `{"disponible": false, "motivo": "sin_evidencia"}`.
+- `turno` puede valer `fuera_de_turno` si el evento ocurre fuera de los horarios.
+- `ocurrido_en` admite hasta 5 s de desfase de reloj entre el borde y el servidor.
+
+### 10.5 Rutas de las pantallas (Tabla 34 del informe)
+
+| Ruta | Rol | Notas |
+|---|---|---|
+| `POST /api/v1/auth/login` · `POST /api/v1/auth/logout` · `GET /api/v1/auth/me` | todos | `login` devuelve `rol` y `pantalla_inicial`. |
+| `POST /api/v1/recambios` | operativo, admin | El supervisor no registra recambios (Tabla 32). |
+| `GET /api/v1/reportes?desde=&hasta=&turno=&recipiente=` | supervisor, admin | `kpis`, `anterior`, `evolucion_diaria[]` (días no observados en `null`), `mapa_calor`. |
+| `GET /api/v1/reportes/exportar?formato=csv\|pdf&…` | supervisor, admin | **204** si el periodo no tiene eventos (HU-04, criterio 3). CSV con `;` y BOM UTF-8 para Excel. |
+| `GET` y `POST /api/v1/acciones` | supervisor, admin | `POST {descripcion, responsable?, eventos: [ids]}`. |
+| `GET` y `PUT /api/v1/boxes/{box}/zonas` | admin | `PUT {zonas: [{tipo, puntos}]}` reemplaza solo los tipos enviados. **409** si la cámara no informa ≥ 15 fps. |
+| `GET` y `PUT /api/v1/parametros` | admin | Fuera de rango → 422 y no cambia **ningún** valor. Rangos en `limites`. |
+| `GET`, `POST /api/v1/usuarios` · `PATCH /api/v1/usuarios/{id}` | admin | Las cuentas se desactivan, no se borran. |

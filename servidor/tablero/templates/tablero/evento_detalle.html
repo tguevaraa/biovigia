@@ -1,0 +1,53 @@
+{% extends "tablero/base.html" %}
+{% load biovigia %}
+{% block titulo %}{{ e.codigo }}{% endblock %}
+{% block contenido %}
+<nav aria-label="Ruta" class="mb-2 small"><a href="{% url 'tablero:eventos' %}"><i class="bi bi-arrow-left" aria-hidden="true"></i> Eventos</a></nav>
+<div class="d-flex flex-wrap align-items-center gap-3 mb-4">
+  <h1 class="bv-titulo mono">{{ e.codigo }}</h1>
+  {% include "tablero/parciales/veredicto.html" with veredicto=e.veredicto %}
+</div>
+<div class="row g-3">
+  <div class="col-lg-7">
+    <section class="bv-card" aria-labelledby="t-ev">
+      <h2 id="t-ev">Evidencia recortada</h2>
+      {% if e.evidencia_disponible %}
+        <img class="bv-evidencia" src="{% url 'tablero:evidencia' e.pk %}" alt="Recorte de la zona del recipiente {{ e.recipiente.tipo|recipiente }} en el momento del descarte">
+        <p class="small text-muted mt-2 mb-0"><i class="bi bi-shield-lock" aria-hidden="true"></i> Solo la zona del recipiente: no incluye el fotograma completo ni rostros (RNF-03). Tu consulta queda registrada en la bitácora.</p>
+      {% elif e.evidencia_eliminada_en %}
+        <div class="bv-evidencia-vacia"><i class="bi bi-clock-history fs-3" aria-hidden="true"></i>
+          <strong>Evidencia eliminada por la política de retención</strong>
+          <span class="small">El recorte se borró el {{ e.evidencia_eliminada_en|local|date:"d/m/Y" }}. El evento y su veredicto se conservan.</span></div>
+      {% else %}
+        <div class="bv-evidencia-vacia"><i class="bi bi-image fs-3" aria-hidden="true"></i>
+          <strong>Sin evidencia</strong>
+          <span class="small">{% if e.conforme %}Los descartes conformes no guardan recorte.{% else %}El servicio de visión no envió recorte para este evento.{% endif %}</span></div>
+      {% endif %}
+    </section>
+  </div>
+  <div class="col-lg-5">
+    <section class="bv-card mb-3" aria-labelledby="t-datos">
+      <h2 id="t-datos">Datos del evento</h2>
+      <dl class="row small mb-0">
+        <dt class="col-5">Fecha y hora</dt><dd class="col-7 mono">{{ e.ocurrido_en|local|date:"d/m/Y H:i:s" }}</dd>
+        <dt class="col-5">Turno</dt><dd class="col-7">{% turno_texto e.turno %}</dd>
+        <dt class="col-5">Box</dt><dd class="col-7">{{ e.recipiente.box.etiqueta }}</dd>
+        <dt class="col-5">Recipiente</dt><dd class="col-7">{% include "tablero/parciales/recipiente.html" with tipo=e.recipiente.tipo %}</dd>
+        <dt class="col-5">Confianza</dt><dd class="col-7 mono">{{ e.confianza|confianza }}</dd>
+        <dt class="col-5">Recipiente tras el evento</dt><dd class="col-7">{% include "tablero/parciales/estado.html" with estado=estado_tras %}</dd>
+        <dt class="col-5">Modelo</dt><dd class="col-7 mono">{{ e.modelo }}</dd>
+        {% if e.rasgos.fotogramas_confirmacion %}<dt class="col-5">Confirmación</dt><dd class="col-7">{{ e.rasgos.fotogramas_confirmacion }} observaciones dentro de la zona{% if e.rasgos.duracion_s %} en {{ e.rasgos.duracion_s }} s{% endif %}</dd>{% endif %}
+      </dl>
+    </section>
+    <section class="bv-card" aria-labelledby="t-acc">
+      <h2 id="t-acc">Acciones correctivas</h2>
+      {% for a in acciones_evento %}
+        <div class="small mb-2"><span class="mono text-muted">{{ a.registrada_en|local|date:"d/m/Y H:i" }}</span><br>{{ a.descripcion }}{% if a.responsable %} <span class="text-muted">· {{ a.responsable }}</span>{% endif %}</div>
+      {% empty %}
+        <p class="small text-muted">Sin acción correctiva registrada.</p>
+      {% endfor %}
+      {% if not e.conforme %}<a class="btn btn-outline-primary btn-sm" href="{% url 'tablero:acciones' %}?evento={{ e.pk }}">Registrar acción</a>{% endif %}
+    </section>
+  </div>
+</div>
+{% endblock %}

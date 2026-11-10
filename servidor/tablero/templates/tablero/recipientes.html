@@ -1,0 +1,87 @@
+{% extends "tablero/base.html" %}
+{% load biovigia %}
+{% block titulo %}Estado de recipientes{% endblock %}
+{% block contenido %}
+<div class="{% if vista_movil %}bv-movil{% endif %}">
+<div class="mb-4">
+  <h1 class="bv-titulo">Estado de recipientes</h1>
+  <p class="bv-subtitulo">Actualizado a las <span id="bv-actualizado">{% now "H:i" %}</span>. Un recipiente común queda contaminado cuando recibe una gasa; solo ese estado permite registrar el recambio.</p>
+</div>
+
+{% if vista_movil %}
+  {# Vista angosta del personal de limpieza (Figura 12): primero lo que espera recambio. #}
+  {% if contaminados %}
+  <section class="bv-recipiente contaminado p-3 mb-3" aria-labelledby="t-esp">
+    <h2 id="t-esp" class="fs-6 fw-bold" style="color: var(--warn-ink)">{{ contaminados|length }} recipiente{{ contaminados|length|pluralize }} espera{{ contaminados|length|pluralize:"n" }} recambio</h2>
+    {% for r in contaminados %}
+      <div class="d-flex justify-content-between align-items-center mt-2"><span class="nombre"><span class="bv-cuadro {{ r.tipo }}" aria-hidden="true"></span> {{ r.box.etiqueta }} · {% if r.tipo == "rojo" %}Rojo{% else %}Común{% endif %}</span>
+        {% include "tablero/parciales/estado.html" with estado=r.estado %}</div>
+      <p class="detalle mt-1 mb-2">Desde las {{ r.contaminado_desde|local|date:"H:i" }}. Retira la funda por la ruta de desechos infecciosos antes de registrar.</p>
+      {% if puede_recambio %}<a class="btn btn-primary w-100" href="{% url 'tablero:recambio' r.box.codigo r.tipo %}">Registrar recambio</a>{% endif %}
+    {% endfor %}
+  </section>
+  {% else %}
+  <div class="bv-aviso bv-ok mb-3"><i class="bi bi-check-circle" aria-hidden="true"></i><div><strong>Ningún recipiente contaminado.</strong> No hay recambios pendientes.</div></div>
+  {% endif %}
+  <section class="bv-card" aria-labelledby="t-sin">
+    <h2 id="t-sin" class="small text-muted">Sin recambio pendiente</h2>
+    <ul class="list-unstyled bv-lista-estado mb-0">
+      {% for r in normales %}<li><span><span class="bv-cuadro {{ r.tipo }}" aria-hidden="true"></span> {{ r.box.etiqueta }} · {% if r.tipo == "rojo" %}Rojo{% else %}Común{% endif %}</span><span class="text-muted small">Normal</span></li>{% endfor %}
+    </ul>
+  </section>
+{% else %}
+  {% if not contaminados %}
+  <div class="bv-aviso bv-ok mb-3"><i class="bi bi-check-circle" aria-hidden="true"></i><div><strong>Ningún recipiente contaminado.</strong></div></div>
+  {% endif %}
+  <div class="row g-3 mb-4">
+    {% for g in boxes %}
+    <div class="col-md-6 col-xl-4">
+      <section class="bv-card h-100" aria-label="{{ g.box.etiqueta }}">
+        <h2>{{ g.box.etiqueta }}</h2>
+        {% for item in g.items %}{% with r=item.r %}
+        <div class="bv-recipiente {% if r.contaminado %}contaminado{% endif %}">
+          <div class="d-flex justify-content-between align-items-center">
+            <span class="nombre">{% include "tablero/parciales/recipiente.html" with tipo=r.tipo %}</span>
+            {% include "tablero/parciales/estado.html" with estado=r.estado %}
+          </div>
+          <div class="detalle mt-1">
+            {% if r.contaminado %}Contaminado desde las {{ r.contaminado_desde|local|date:"H:i:s" }}{% if ve_eventos and r.evento_causa_id %} por <a href="{% url 'tablero:evento' r.evento_causa_id %}">EV-{{ r.evento_causa_id|stringformat:"04d" }}</a>{% endif %}
+            {% elif r.tipo == "rojo" %}Recipiente de destino correcto
+            {% elif item.ultimo %}Último recambio a las {{ item.ultimo.ocurrido_en|local|date:"H:i" }}
+            {% else %}Sin cambios registrados{% endif %}
+          </div>
+          {% if r.contaminado and puede_recambio %}<a class="btn btn-primary w-100 mt-2" href="{% url 'tablero:recambio' r.box.codigo r.tipo %}">Registrar recambio</a>{% endif %}
+        </div>
+        {% endwith %}{% endfor %}
+      </section>
+    </div>
+    {% empty %}<div class="col"><p class="text-muted">No hay recipientes registrados.</p></div>
+    {% endfor %}
+  </div>
+{% endif %}
+
+<section class="bv-card mt-3" aria-labelledby="t-hoy">
+  <h2 id="t-hoy">Cambios de estado de hoy</h2>
+  <div class="table-responsive">
+  <table class="bv-tabla">
+    <thead><tr><th scope="col">Hora</th><th scope="col">Recipiente</th><th scope="col">Cambio</th>{% if ve_eventos %}<th scope="col" class="text-end">Evento</th>{% endif %}</tr></thead>
+    <tbody>
+    {% for c in cambios %}
+      <tr><td class="mono">{{ c.hora|date:"H:i:s" }}</td>
+        <td>{{ c.recipiente.box.etiqueta }} · {% if c.recipiente.tipo == "rojo" %}Rojo{% else %}Común{% endif %}</td>
+        <td>{{ c.descripcion }}</td>
+        {% if ve_eventos %}<td class="text-end">{% if c.evento_id %}<a href="{% url 'tablero:evento' c.evento_id %}">Ver EV-{{ c.evento_id|stringformat:"04d" }}</a>{% endif %}</td>{% endif %}</tr>
+    {% empty %}
+      <tr><td colspan="4" class="text-muted text-center py-3">Sin cambios de estado hoy.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  BioVigIA.observar("{% url 'api:recipientes' %}", (d) => JSON.stringify([d.items, d.cambios_hoy.length]));
+</script>
+{% endblock %}

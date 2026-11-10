@@ -1,0 +1,78 @@
+{% load static %}<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block titulo %}BioVigIA{% endblock %} · BioVigIA</title>
+  <script>
+    // Modo oscuro según el sistema operativo; los tokens hacen el resto.
+    if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
+      document.documentElement.setAttribute("data-bs-theme", "dark");
+    }
+  </script>
+  <link rel="stylesheet" href="{% static 'tablero/vendor/bootstrap/bootstrap.min.css' %}">
+  <link rel="stylesheet" href="{% static 'tablero/vendor/bootstrap-icons/bootstrap-icons.min.css' %}">
+  <link rel="stylesheet" href="{% static 'tablero/css/design-tokens.css' %}">
+  <link rel="stylesheet" href="{% static 'tablero/css/app.css' %}">
+  {% block cabecera %}{% endblock %}
+</head>
+<body>
+{% if user.is_authenticated %}
+<nav class="navbar navbar-expand-lg bv-nav py-0" aria-label="Navegación principal">
+  <div class="container-xl">
+    <a class="navbar-brand py-2" href="{% url 'tablero:inicio' %}">
+      <i class="bi bi-droplet" aria-hidden="true"></i> BioVigIA
+    </a>
+    {% if menu|length > 1 %}
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#bvMenu"
+            aria-controls="bvMenu" aria-expanded="false" aria-label="Abrir menú">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="bvMenu">
+      <ul class="navbar-nav me-auto">
+        {% for item in menu %}
+        <li class="nav-item">
+          <a class="nav-link {% if nav == item.clave %}active{% endif %}" href="{% url item.ruta %}"
+             {% if nav == item.clave %}aria-current="page"{% endif %}>{{ item.texto }}</a>
+        </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+    <div class="ms-auto d-flex">
+    {% endif %}
+      <a class="bv-usuario ms-lg-3" href="{% url 'tablero:mi_cuenta' %}" title="Mi cuenta">
+        <span class="bv-avatar" aria-hidden="true">{{ user.iniciales }}</span>
+        <span class="d-none d-sm-block"><strong>{{ user.nombre_visible }}</strong>
+          <small>{{ user.get_rol_display }}</small></span>
+      </a>
+    </div>
+  </div>
+</nav>
+{% endif %}
+
+<main class="bv-main">
+  <div class="{% block contenedor %}container-xl{% endblock %}">
+    {% if messages %}
+      <div class="mb-3" role="status" aria-live="polite">
+      {% for m in messages %}
+        {% if m.tags == "success" %}
+          <div class="bv-aviso bv-ok mb-2"><i class="bi bi-check-circle" aria-hidden="true"></i><div>{{ m }}</div></div>
+        {% elif m.tags == "error" %}
+          <div class="bv-aviso bv-bad mb-2"><i class="bi bi-x-octagon" aria-hidden="true"></i><div>{{ m }}</div></div>
+        {% elif m.tags == "warning" %}
+          <div class="bv-aviso bv-warn mb-2"><i class="bi bi-exclamation-triangle" aria-hidden="true"></i><div>{{ m }}</div></div>
+        {% else %}
+          <div class="bv-aviso bv-off mb-2"><i class="bi bi-info-circle" aria-hidden="true"></i><div>{{ m }}</div></div>
+        {% endif %}
+      {% endfor %}
+      </div>
+    {% endif %}
+    {% block contenido %}{% endblock %}
+  </div>
+</main>
+
+<script src="{% static 'tablero/vendor/bootstrap/bootstrap.bundle.min.js' %}"></script>
+<script src="{% static 'tablero/js/app.js' %}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

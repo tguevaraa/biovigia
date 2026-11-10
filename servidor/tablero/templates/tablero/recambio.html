@@ -1,0 +1,28 @@
+{% extends "tablero/base.html" %}
+{% block titulo %}Registrar recambio{% endblock %}
+{% block contenido %}
+<div class="bv-movil">
+  <nav class="mb-3 small"><a href="{% url 'tablero:recipientes' %}"><i class="bi bi-arrow-left" aria-hidden="true"></i> Estado de recipientes</a></nav>
+  <h1 class="bv-titulo mb-3">Registrar recambio</h1>
+  <div class="bv-card mb-3">
+    <div class="d-flex align-items-center gap-2">
+      <span class="bv-cuadro {{ r.tipo }}" style="width:28px;height:28px" aria-hidden="true"></span>
+      <div><strong>{{ r.box.etiqueta }} · {% if r.tipo == "rojo" %}Rojo{% else %}Común{% endif %}</strong>
+        <div class="small text-muted">Contaminado desde las {{ r.contaminado_desde|date:"H:i" }}</div></div>
+    </div>
+    <div class="mt-2">{% include "tablero/parciales/estado.html" with estado=r.estado %}</div>
+  </div>
+  <p>Al confirmar, el recambio se guarda con la fecha y hora actuales y el recipiente vuelve a <strong>Normal</strong>. El evento que lo contaminó <strong>se conserva</strong> en el historial.</p>
+  <p class="small text-muted">Confírmalo después de retirar la funda por la ruta de desechos infecciosos y colocar una nueva.</p>
+  <form method="post" id="form-recambio">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-primary w-100 mb-2">Confirmar recambio</button>
+    <a class="btn btn-outline-primary w-100" href="{% url 'tablero:recipientes' %}">Cancelar</a>
+  </form>
+  <div id="recambio-sin-red" class="bv-aviso bv-warn mt-3 d-none" role="alert"><i class="bi bi-wifi-off" aria-hidden="true"></i>
+    <div><strong>No se guardó el recambio.</strong> Se perdió la conexión con el servidor. Revisa la red y vuelve a confirmar.</div></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>BioVigIA.protegerEnvio("form-recambio", "recambio-sin-red");</script>
+{% endblock %}

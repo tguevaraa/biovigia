@@ -1,0 +1,105 @@
+{% extends "tablero/base.html" %}
+{% load biovigia %}
+{% block titulo %}Reportes e indicadores{% endblock %}
+{% block contenido %}
+<div class="mb-3">
+  <h1 class="bv-titulo">Reportes e indicadores</h1>
+  <p class="bv-subtitulo">{{ ind.periodo.descripcion }}</p>
+</div>
+<form method="get" class="d-flex flex-wrap gap-3 align-items-end mb-4 no-print" id="form-periodo">
+  <div><label class="form-label mb-1" for="{{ form.periodo.id_for_label }}">Periodo</label>{{ form.periodo }}</div>
+  <div class="d-flex gap-2" id="rango-personalizado">
+    <div><label class="form-label mb-1" for="{{ form.desde.id_for_label }}">Desde</label>{{ form.desde }}</div>
+    <div><label class="form-label mb-1" for="{{ form.hasta.id_for_label }}">Hasta</label>{{ form.hasta }}</div>
+  </div>
+  <div><label class="form-label mb-1" for="{{ form.turno.id_for_label }}">Turno</label>{{ form.turno }}</div>
+  <div><label class="form-label mb-1" for="{{ form.recipiente.id_for_label }}">Recipiente</label>{{ form.recipiente }}</div>
+  <button class="btn btn-outline-primary" type="submit">Aplicar</button>
+  <div class="ms-auto d-flex gap-2">
+    <a class="btn btn-outline-primary" href="{% url 'tablero:exportar' %}?{{ consulta }}{% if consulta %}&{% endif %}formato=csv"><i class="bi bi-filetype-csv" aria-hidden="true"></i> Exportar CSV</a>
+    <a class="btn btn-primary" href="{% url 'tablero:exportar' %}?{{ consulta }}{% if consulta %}&{% endif %}formato=pdf"><i class="bi bi-filetype-pdf" aria-hidden="true"></i> Exportar PDF</a>
+  </div>
+</form>
+
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md"><div class="bv-kpi"><div class="etq">Descartes</div><div class="valor">{{ ind.kpis.descartes }}</div>
+    <div class="nota">{{ ind.anterior.descartes }} el periodo anterior</div></div></div>
+  <div class="col-6 col-md"><div class="bv-kpi"><div class="etq">No conformes</div><div class="valor">{{ ind.kpis.no_conformes }}</div>
+    <div class="nota">{% if ind.kpis.descartes %}{{ ind.kpis.proporcion_no_conformes|porcentaje }} del total{% else %}Sin descartes{% endif %}</div></div></div>
+  <div class="col-6 col-md"><div class="bv-kpi"><div class="etq">Cumplimiento</div><div class="valor">{{ ind.kpis.cumplimiento|porcentaje }}</div>
+    <div class="nota">{{ ind.anterior.cumplimiento|porcentaje }} el anterior</div></div></div>
+  <div class="col-6 col-md"><div class="bv-kpi"><div class="etq">Recipientes contaminados</div><div class="valor">{{ ind.kpis.recipientes_contaminados }}</div>
+    <div class="nota">Veces en el periodo</div></div></div>
+  <div class="col-12 col-md"><div class="bv-kpi"><div class="etq">Tiempo sin observar</div><div class="valor">{{ ind.kpis.minutos_sin_observar|duracion }}</div>
+    <div class="nota">{{ ind.kpis.desconexiones }} periodo{{ ind.kpis.desconexiones|pluralize }} no observado{{ ind.kpis.desconexiones|pluralize }}</div></div></div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-lg-6">
+    <section class="bv-card h-100" aria-labelledby="t-evo">
+      <div class="d-flex justify-content-between align-items-center mb-3"><h2 id="t-evo" class="mb-0">Evolución diaria</h2>
+        <div class="bv-leyenda"><span><i class="t"></i>Total</span><span><i class="n"></i>No conformes</span><span><i class="s"></i>Sin observar</span></div></div>
+      {% if ind.evolucion_diaria|length <= 31 %}
+      <div class="bv-barras mt-4" role="img" aria-label="Descartes por día del periodo">
+        {% for d in ind.evolucion_diaria %}
+        {% if d.total is None %}
+        <div class="col {% if d.estado == 'sin_observar' %}sin-observar{% endif %}" title="{{ d.etiqueta }}: {% if d.estado == 'pendiente' %}pendiente{% else %}sin observar{% endif %}"></div>
+        {% else %}
+        <div class="col" title="{{ d.etiqueta }}: {{ d.total }} descartes, {{ d.no_conformes }} no conformes">
+          <div class="barra total" style="height: {{ d.total|altura:maximo }}%">{% if d.total and ind.evolucion_diaria|length <= 14 %}<span>{{ d.total }}</span>{% endif %}</div>
+          <div class="barra nc" style="height: {{ d.no_conformes|altura:maximo }}%">{% if d.no_conformes and ind.evolucion_diaria|length <= 14 %}<span>{{ d.no_conformes }}</span>{% endif %}</div>
+        </div>{% endif %}{% endfor %}
+      </div>
+      <div class="bv-ejes">{% for d in ind.evolucion_diaria %}<div>{% if ind.evolucion_diaria|length <= 14 %}{{ d.etiqueta }}<small>{% if d.total is None %}{% if d.estado == 'pendiente' %}pendiente{% else %}sin observar{% endif %}{% else %}{{ d.total }} / {{ d.no_conformes }}{% endif %}</small>{% else %}{{ d.etiqueta|slice:"4:" }}{% endif %}</div>{% endfor %}</div>
+      {% else %}
+      <p class="small text-muted">El periodo es largo para dibujarlo día por día; exporta el CSV para ver el detalle.</p>
+      {% endif %}
+      <p class="small mt-3 mb-0">Suma: {{ ind.kpis.descartes }} descartes y {{ ind.kpis.no_conformes }} no conformes en {{ ind.periodo.dias }} día{{ ind.periodo.dias|pluralize }}. Los días rayados no se observaron: no cuentan como cero.</p>
+    </section>
+  </div>
+  <div class="col-lg-6">
+    <section class="bv-card h-100" aria-labelledby="t-calor">
+      <h2 id="t-calor">No conformes por día y hora</h2>
+      {% if ind.mapa_calor.filas %}
+      <div class="table-responsive">
+      <table class="bv-calor">
+        <thead><tr><th scope="col"><span class="visually-hidden">Día</span></th>{% for h in ind.mapa_calor.horas %}<th scope="col">{{ h }}</th>{% endfor %}</tr></thead>
+        <tbody>{% for f in ind.mapa_calor.filas %}<tr><th scope="row">{{ f.dia }}</th>
+          {% for v in f.valores %}{% if v is None %}<td class="nulo" title="Sin observar">–</td>{% else %}<td class="n{{ v|nivel:ind.mapa_calor.maximo }}">{{ v }}</td>{% endif %}{% endfor %}</tr>{% endfor %}</tbody>
+      </table>
+      </div>
+      <div class="bv-leyenda mt-2 align-items-center"><span>Menos</span><span class="d-inline-flex gap-1">{% for n in "01234" %}<i class="m-0" style="background: var(--calor-{{ n }}); width:18px; height:12px; border:1px solid var(--border)"></i>{% endfor %}</span><span>Más</span>
+        <span><i class="s"></i>Sin observar</span></div>
+      {% else %}<p class="small text-muted">Sin horas de turno en el periodo.</p>{% endif %}
+    </section>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-6">
+    <section class="bv-card h-100 d-flex align-items-center justify-content-between gap-3">
+      {% if ind.sin_accion %}
+      <p class="mb-0 small">{{ ind.sin_accion }} evento{{ ind.sin_accion|pluralize }} no conforme{{ ind.sin_accion|pluralize }} del periodo no tiene{{ ind.sin_accion|pluralize:"n" }} acción correctiva. Regístrala antes de exportar para que salga en el CSV.</p>
+      <a class="btn btn-outline-primary" href="{% url 'tablero:acciones' %}">Registrar acción</a>
+      {% else %}<p class="mb-0 small">Todos los eventos no conformes del periodo tienen acción correctiva.</p>{% endif %}
+    </section>
+  </div>
+  <div class="col-lg-6">
+    <section class="bv-aviso bv-off h-100" style="flex-direction:column">
+      <div>CSV: fecha, hora, turno, recipiente, veredicto, confianza y acción correctiva de cada evento.</div>
+      <div>PDF: los indicadores del periodo, con los tramos no observados marcados.</div>
+      <div class="text-muted">Ningún archivo exportado muestra personas ni quién hizo cada recambio.</div>
+    </section>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  (function () {
+    const sel = document.getElementById("{{ form.periodo.id_for_label }}");
+    const rango = document.getElementById("rango-personalizado");
+    const sync = () => rango.classList.toggle("d-none", sel.value !== "personalizado");
+    sel.addEventListener("change", sync); sync();
+  })();
+</script>
+{% endblock %}

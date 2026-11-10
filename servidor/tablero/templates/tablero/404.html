@@ -1,0 +1,10 @@
+{% extends "tablero/base.html" %}
+{% block titulo %}No encontrado{% endblock %}
+{% block contenido %}
+<div class="bv-card text-center mx-auto my-5" style="max-width: 520px">
+  <i class="bi bi-search fs-1" style="color: var(--off-ink)" aria-hidden="true"></i>
+  <h1 class="bv-titulo mt-2">No encontramos lo que buscas</h1>
+  <p class="text-muted">La dirección no existe o el registro ya no está disponible.</p>
+  <a class="btn btn-primary" href="{{ destino }}">Volver</a>
+</div>
+{% endblock %}

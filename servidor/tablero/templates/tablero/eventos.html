@@ -1,0 +1,25 @@
+{% extends "tablero/base.html" %}
+{% block titulo %}Eventos{% endblock %}
+{% block contenido %}
+<div class="mb-4">
+  <h1 class="bv-titulo">Eventos</h1>
+  <p class="bv-subtitulo">Cada descarte confirmado por la cámara, con su veredicto. No existe filtro por persona: el sistema no identifica a nadie.</p>
+</div>
+<form method="get" class="bv-card mb-3 no-print" aria-label="Filtros">
+  <div class="row g-3 align-items-end">
+    <div class="col-6 col-md-2"><label class="form-label" for="{{ form.desde.id_for_label }}">Desde</label>{{ form.desde }}</div>
+    <div class="col-6 col-md-2"><label class="form-label" for="{{ form.hasta.id_for_label }}">Hasta</label>{{ form.hasta }}
+      {% for e in form.hasta.errors %}<div class="small text-danger">{{ e }}</div>{% endfor %}</div>
+    <div class="col-6 col-md-2"><label class="form-label" for="{{ form.turno.id_for_label }}">Turno</label>{{ form.turno }}</div>
+    <div class="col-6 col-md-2"><label class="form-label" for="{{ form.recipiente.id_for_label }}">Recipiente</label>{{ form.recipiente }}</div>
+    <div class="col-6 col-md-2"><label class="form-label" for="{{ form.veredicto.id_for_label }}">Veredicto</label>{{ form.veredicto }}</div>
+    <div class="col-6 col-md-2 d-flex gap-2"><button class="btn btn-primary flex-fill" type="submit">Filtrar</button>
+      {% if hay_filtros %}<a class="btn btn-outline-primary" href="{% url 'tablero:eventos' %}" title="Quitar filtros"><i class="bi bi-x-lg" aria-hidden="true"></i><span class="visually-hidden">Quitar filtros</span></a>{% endif %}</div>
+  </div>
+</form>
+<div class="bv-tabla-wrap">
+  {% if hay_filtros %}{% include "tablero/parciales/tabla_eventos.html" with lista=pagina.items vacio="Ningún evento cumple los filtros. Si la cámara estaba observando, no hubo descartes en ese periodo." %}
+  {% else %}{% include "tablero/parciales/tabla_eventos.html" with lista=pagina.items vacio="Todavía no hay eventos registrados." %}{% endif %}
+  {% include "tablero/parciales/paginador.html" %}
+</div>
+{% endblock %}

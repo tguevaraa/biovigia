@@ -1,0 +1,80 @@
+{% extends "tablero/config_base.html" %}
+{% load static %}
+{% block titulo %}Zonas de recipientes{% endblock %}
+{% block titulo_config %}Zonas de recipientes{% endblock %}
+{% block contenido_config %}
+{% if not box %}
+  <p class="text-muted">No hay boxes registrados.</p>
+{% else %}
+<div class="row g-3">
+  <div class="col-lg-8">
+    <section class="bv-card">
+      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <h2 class="mb-0">Cámara del {{ box.etiqueta }}</h2>
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-outline-primary btn-sm" id="z-trazar" aria-pressed="true">Trazar polígono</button>
+          <button type="button" class="btn btn-outline-primary btn-sm" id="z-deshacer">Deshacer punto</button>
+          <button type="button" class="btn btn-outline-primary btn-sm" id="z-limpiar">Borrar trazo</button>
+        </div>
+      </div>
+      <div class="bv-lienzo">
+        <canvas id="z-lienzo" width="640" height="480" aria-label="Fotograma de referencia; haz clic para añadir puntos al polígono"></canvas>
+      </div>
+      <div class="row g-2 mt-2 small">
+        <div class="col-md-7 text-muted">Fotograma de referencia normalizado (640 × 480) enviado por el servicio de visión con la escena vacía.
+          Haz clic sobre la boca del recipiente para añadir puntos (mínimo 3; se recomiendan 4) y guarda. No se guardan fotogramas del funcionamiento.</div>
+        <div class="col-md-5">
+          {% if camara.cumple %}
+            <div class="bv-aviso bv-ok"><i class="bi bi-check-circle" aria-hidden="true"></i><div><strong>Cámara a {{ camara.fps }} fps (mínimo {{ camara.fps_minimo }})</strong><br>El muestreo de Parámetros nunca puede superar este valor.</div></div>
+          {% elif camara.conectada %}
+            <div class="bv-aviso bv-warn" role="alert"><i class="bi bi-exclamation-triangle" aria-hidden="true"></i><div><strong>La cámara entrega {{ camara.fps|default:"0" }} fps</strong> y el mínimo es {{ camara.fps_minimo }}. No se pueden guardar zonas hasta que la fuente de video cumpla el requisito.</div></div>
+          {% else %}
+            <div class="bv-aviso bv-warn" role="alert"><i class="bi bi-camera-video-off" aria-hidden="true"></i><div><strong>El servicio de visión no está enviando video.</strong> Inícialo para medir los fps; no se pueden guardar zonas sin esa medición.</div></div>
+          {% endif %}
+        </div>
+      </div>
+    </section>
+  </div>
+  <div class="col-lg-4">
+    <section class="bv-card mb-3">
+      <h2>Zonas</h2>
+      <label class="form-label" for="z-box">Box</label>
+      <select id="z-box" class="form-select mb-3" onchange="location.search='?box='+this.value">
+        {% for b in boxes %}<option value="{{ b.codigo }}" {% if b.pk == box.pk %}selected{% endif %}>{{ b.etiqueta }}</option>{% endfor %}
+      </select>
+      <div class="form-label">Recipiente a trazar</div>
+      <div role="radiogroup" aria-label="Recipiente a trazar">
+      {% for valor, etiqueta in tipos %}
+        <label class="bv-opcion-zona" data-tipo="{{ valor }}">
+          <span><input class="form-check-input me-2" type="radio" name="z-tipo" value="{{ valor }}" {% if forloop.first %}checked{% endif %}>
+            <span class="bv-cuadro {{ valor }}" aria-hidden="true"></span> {{ etiqueta }}</span>
+          <span class="small text-muted" data-estado="{{ valor }}"></span>
+        </label>
+      {% endfor %}
+      </div>
+      <p class="small text-muted mt-2">Guardar reemplaza solo el polígono seleccionado; el del otro recipiente no cambia.</p>
+      <p class="small text-muted mb-0" id="z-ultima"></p>
+    </section>
+    <div id="z-mensaje" class="mb-3" role="status" aria-live="polite"></div>
+    <div class="d-flex gap-2">
+      <button type="button" class="btn btn-primary" id="z-guardar" {% if not camara.cumple %}disabled aria-disabled="true"{% endif %}>Guardar zona</button>
+      <a class="btn btn-outline-primary" href="{% url 'tablero:zonas' %}?box={{ box.codigo }}">Cancelar</a>
+    </div>
+  </div>
+</div>
+{{ zonas|json_script:"z-datos" }}
+{{ camara|json_script:"z-camara" }}
+{% endif %}
+{% endblock %}
+{% block scripts %}
+{% if box %}
+<script>
+  window.BV_ZONAS = {
+    box: "{{ box.codigo|escapejs }}",
+    urlZonas: "{% url 'api:zonas' box.codigo %}",
+    urlReferencia: "{% url 'api:referencia' box.codigo %}",
+  };
+</script>
+<script src="{% static 'tablero/js/zonas.js' %}"></script>
+{% endif %}
+{% endblock %}

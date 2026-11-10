@@ -1,0 +1,29 @@
+{% extends "tablero/base.html" %}
+{% load biovigia %}
+{% block titulo %}Mi cuenta{% endblock %}
+{% block contenido %}
+<h1 class="bv-titulo mb-4">Mi cuenta</h1>
+<div class="row g-3">
+  <div class="col-md-5">
+    <section class="bv-card">
+      <div class="d-flex align-items-center gap-3 mb-3"><span class="bv-avatar" style="width:48px;height:48px" aria-hidden="true">{{ user.iniciales }}</span>
+        <div><strong>{{ user.nombre_visible }}</strong><div class="small text-muted">{{ user.get_rol_display }}</div></div></div>
+      <dl class="row small mb-3">
+        <dt class="col-5">Usuario</dt><dd class="col-7 mono">{{ user.username }}</dd>
+        <dt class="col-5">Correo</dt><dd class="col-7">{{ user.email|default:"—" }}</dd>
+        <dt class="col-5">Último acceso</dt><dd class="col-7 mono">{{ user.last_login|local|date:"d/m/Y H:i"|default:"—" }}</dd>
+      </dl>
+      <form method="post" action="{% url 'tablero:logout' %}">{% csrf_token %}
+        <button class="btn btn-outline-primary w-100" type="submit"><i class="bi bi-box-arrow-right" aria-hidden="true"></i> Cerrar sesión</button></form>
+    </section>
+  </div>
+  <div class="col-md-7">
+    <form method="post" class="bv-card" novalidate>
+      {% csrf_token %}
+      <h2>Cambiar contraseña</h2>
+      {% include "tablero/parciales/campos.html" %}
+      <button class="btn btn-primary" type="submit">Actualizar contraseña</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

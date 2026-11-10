@@ -1,0 +1,7 @@
+from django.apps import AppConfig
+
+
+class VigilanciaConfig(AppConfig):
+    default_auto_field = "django.db.models.BigAutoField"
+    name = "vigilancia"
+    verbose_name = "Vigilancia del descarte"
