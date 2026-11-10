@@ -113,7 +113,8 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         detector = crear_detector(config.detector, config.modelo,
-                                  config.parametros.umbral_confianza, config.imgsz)
+                                  config.parametros.umbral_confianza, config.imgsz,
+                                  detectar_mano=config.disparador == "si")
     except ErrorModelo as exc:
         log.error("%s", exc)
         return 2

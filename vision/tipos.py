@@ -11,6 +11,8 @@ GASA = "gasa"
 RECIPIENTE_ROJO = "recipiente_rojo"
 RECIPIENTE_COMUN = "recipiente_comun"
 CLASES = (GASA, RECIPIENTE_ROJO, RECIPIENTE_COMUN)
+# Clase opcional: si el modelo la tiene, se activa el disparador por mano.
+MANO = "mano"
 
 ROJO = "rojo"
 COMUN = "comun"

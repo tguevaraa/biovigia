@@ -155,7 +155,7 @@ python herramientas\evaluar_reglas.py --detector movimiento --videos datos\sinte
 
 ```powershell
 cd servidor; python manage.py test; cd ..        # 26 pruebas: contrato, roles, aceptación
-python -m unittest discover -s vision/tests -t . # 25 pruebas: zonas, reglas, cola, canalización
+python -m unittest discover -s vision/tests -t . # 42 pruebas: zonas, reglas, disparador, cola, canalización
 ```
 
 ### Base de datos
@@ -172,7 +172,7 @@ El MVP arranca con **SQLite**. El paso a PostgreSQL (BVIA-33) no toca código: i
 |---|---|---|
 | Verificar los 20 videos | `python herramientas\verificar_videos.py` | BVIA-32 |
 | Extraer fotogramas (1 de cada 10) | `python herramientas\extraer_fotogramas.py` | BVIA-38 |
-| Anotar `gasa`, `recipiente_rojo`, `recipiente_comun` y partir 80/20 **por video** | herramienta de anotación → `datos/dataset/` | BVIA-39 |
+| Anotar `gasa`, `recipiente_rojo`, `recipiente_comun` (y `mano`, opcional) y partir 80/20 **por video** | herramienta de anotación → `datos/dataset/` | BVIA-39 |
 | Entrenar y verificar OE2 (mAP, parámetros, GFLOPs) | `python herramientas\entrenar_modelo.py` | BVIA-40 |
 | Medir fps en el equipo de despliegue (RNF-09) | `python herramientas\entrenar_modelo.py --solo-evaluar vision\modelos\biovigia-gasa-v0.1.pt --medir-fps` | BVIA-41 |
 | Medir RNF-07 y RNF-08 sobre los videos | `python herramientas\evaluar_reglas.py` | BVIA-36 |
@@ -191,6 +191,10 @@ YOLO solo dice dónde hay una gasa en cada fotograma. Quien decide es `vision/re
    antes, no se cuenta todavía.
 4. **Un evento por gasa**: cada trayectoria se cierra al confirmarse, y una memoria de lo
    ya contado evita repetir una gasa que queda a la vista dentro de un recipiente sin tapa.
+5. **Disparador por mano** (opcional): si el modelo distingue la clase `mano`, una gasa
+   solo cuenta si apareció junto a una mano cerca de los recipientes. Un reflejo o un
+   papel que ya estaba dentro no generan evento. Se controla con `BIOVIGIA_DISPARADOR`
+   o `--disparador auto|si|no`; el detalle está en `docs/deteccion-dos-etapas.md`.
 
 Umbral, k, N, ventana y fps se cambian en **PAN-10** y el servicio los aplica en menos de
 30 s, sin reiniciar ni reentrenar (RNF-16). Cada evento guarda sus `rasgos` para entrenar

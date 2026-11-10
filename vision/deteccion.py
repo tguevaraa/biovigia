@@ -19,7 +19,7 @@ from typing import Protocol
 import cv2
 import numpy as np
 
-from .tipos import CLASES, GASA, RECIPIENTE_COMUN, RECIPIENTE_ROJO, Deteccion
+from .tipos import CLASES, GASA, MANO, RECIPIENTE_COMUN, RECIPIENTE_ROJO, Deteccion
 
 log = logging.getLogger("vision.deteccion")
 
@@ -33,6 +33,7 @@ ALIAS = {
     "recipiente_común": RECIPIENTE_COMUN, "común": RECIPIENTE_COMUN,
     "recipiente_negro": RECIPIENTE_COMUN, "negro": RECIPIENTE_COMUN,
     "tacho_negro": RECIPIENTE_COMUN,
+    "mano": MANO, "antebrazo": MANO, "brazo": MANO, "mano_antebrazo": MANO,
 }
 
 
@@ -43,6 +44,7 @@ class ErrorModelo(RuntimeError):
 class Detector(Protocol):
     nombre: str
     umbral: float
+    detecta_mano: bool
 
     def detectar(self, imagen: np.ndarray) -> list[Deteccion]: ...
 
@@ -79,7 +81,9 @@ class DetectorYOLO:
         if faltan:
             log.warning("El modelo no tiene las clases %s; la verificación de alineación de "
                         "zonas queda desactivada.", ", ".join(faltan))
-        log.info("Modelo %s cargado (%s clases)", self.nombre, len(nombres))
+        self.detecta_mano = MANO in self.mapa.values()
+        log.info("Modelo %s cargado (%s clases%s)", self.nombre, len(nombres),
+                 ", con clase mano" if self.detecta_mano else "")
 
     @classmethod
     def obtener(cls, ruta: Path, umbral: float, imgsz: int = 640) -> "DetectorYOLO":
@@ -115,9 +119,16 @@ class DetectorYOLO:
 class DetectorMovimiento:
     """Objetos claros y poco saturados que se mueven sobre un fondo aprendido."""
 
-    def __init__(self, umbral: float = 0.5, area_min: int = 120, area_max: int = 25000) -> None:
+    # Piel en YCrCb. Aproximación de desarrollo: no distingue una mano de otro objeto de
+    # tono parecido que se mueva. El disparador real usa la clase «mano» del modelo.
+    PIEL_MIN, PIEL_MAX = (0, 135, 85), (255, 180, 135)
+    AREA_MANO_MIN = 1500
+
+    def __init__(self, umbral: float = 0.5, area_min: int = 120, area_max: int = 25000,
+                 detectar_mano: bool = False) -> None:
         self.nombre = "dev-movimiento-v0"
         self.umbral = umbral
+        self.detecta_mano = detectar_mano
         self.area_min, self.area_max = area_min, area_max
         self.fondo = cv2.createBackgroundSubtractorMOG2(history=300, varThreshold=32,
                                                         detectShadows=False)
@@ -140,13 +151,35 @@ class DetectorMovimiento:
             relleno = area / float(w * h) if w and h else 0.0
             confianza = float(min(0.99, 0.45 + 0.5 * relleno))
             detecciones.append(Deteccion(GASA, confianza, x, y, x + w, y + h))
+        if self.detecta_mano:
+            detecciones += self._manos(imagen, primer_plano)
         return detecciones
 
+    def _manos(self, imagen: np.ndarray, primer_plano: np.ndarray) -> list[Deteccion]:
+        """Regiones grandes de tono piel que se mueven."""
+        ycrcb = cv2.cvtColor(imagen, cv2.COLOR_BGR2YCrCb)
+        piel = cv2.inRange(ycrcb, self.PIEL_MIN, self.PIEL_MAX)
+        mascara = cv2.bitwise_and(primer_plano, piel)
+        mascara = cv2.morphologyEx(mascara, cv2.MORPH_OPEN, self.nucleo)
+        mascara = cv2.morphologyEx(mascara, cv2.MORPH_CLOSE, self.nucleo, iterations=3)
+        contornos, _ = cv2.findContours(mascara, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        manos = []
+        for c in contornos:
+            area = cv2.contourArea(c)
+            if area < self.AREA_MANO_MIN:
+                continue
+            x, y, w, h = cv2.boundingRect(c)
+            relleno = area / float(w * h) if w and h else 0.0
+            manos.append(Deteccion(MANO, float(min(0.99, 0.5 + 0.5 * relleno)),
+                                   x, y, x + w, y + h))
+        return manos
 
-def crear_detector(tipo: str, ruta_modelo: Path, umbral: float, imgsz: int = 640) -> Detector:
+
+def crear_detector(tipo: str, ruta_modelo: Path, umbral: float, imgsz: int = 640,
+                   detectar_mano: bool = False) -> Detector:
     if tipo == "movimiento":
         log.warning("Usando el detector de DESARROLLO por movimiento. Los eventos llevarán el "
                     "modelo 'dev-movimiento-v0'. Para la prueba de aceptación usa el modelo "
                     "entrenado (--detector yolo).")
-        return DetectorMovimiento(umbral)
+        return DetectorMovimiento(umbral, detectar_mano=detectar_mano)
     return DetectorYOLO.obtener(ruta_modelo, umbral, imgsz)

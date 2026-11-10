@@ -15,12 +15,14 @@ from .captura import FuenteVideo
 from .cola import ColaLocal
 from .configuracion import Configuracion
 from .deteccion import Detector
+from .disparador import SIN_MANO, DisparadorMano
 from .evidencia import a_jpeg, recortar
 from .publicador import Publicador
 from .reglas import Confirmado, MotorConfirmacion, ReglaConClasificador, ReglaKdeN
 from .tipos import (
     COMUN,
     GASA,
+    MANO,
     RECIPIENTE_COMUN,
     RECIPIENTE_ROJO,
     ROJO,
@@ -52,12 +54,30 @@ class ServicioVision:
                  else ReglaKdeN())
         self.motor = MotorConfirmacion(zonas, config.parametros, regla, config.ancho,
                                        config.alto)
+        self.disparador = self._crear_disparador()
+        self.motor.exige_mano = self.disparador is not None
+        self._mano = SIN_MANO
         self._recortes: dict[str, np.ndarray] = {}
         self._zonas_alineadas: Optional[bool] = None
         self._detener = threading.Event()
         self.eventos: list[EventoDescarte] = []
         self._ultimo: Optional[Fotograma] = None
         self._aviso_sin_zonas = False
+
+    def _crear_disparador(self) -> Optional[DisparadorMano]:
+        """Disparador por mano, según ``config.disparador`` y lo que distinga el detector."""
+        modo = self.config.disparador
+        if modo == "no":
+            return None
+        if not getattr(self.detector, "detecta_mano", False):
+            if modo == "si":
+                log.warning("Se pidió el disparador por mano, pero el detector %s no distingue "
+                            "manos: se desactiva y se confirma solo con las reglas.",
+                            self.config.etiqueta_modelo)
+            return None
+        log.info("Disparador por mano activo (gracia %.1f s, margen %.1f)",
+                 self.config.parametros.gracia_mano_s, self.config.parametros.margen_mano)
+        return DisparadorMano(self.config.parametros, self.config.ancho, self.config.alto)
 
     # --- estado y configuración en caliente -----------------------------------------------------
 
@@ -71,6 +91,7 @@ class ServicioVision:
             "fps": round(self.fuente.fps_medido, 1) if self.fuente.fps_medido else None,
             "zonas_alineadas": self._zonas_alineadas,
             "modelo": self.config.etiqueta_modelo,
+            "disparador_mano": self.disparador is not None,
         }
 
     def aplicar_configuracion(self, datos: dict) -> None:
@@ -131,7 +152,10 @@ class ServicioVision:
         self._verificar_alineacion(detecciones)
         self._guardar_recortes(f, gasas)
 
-        for confirmado in self.motor.procesar(gasas, f.t, f.momento):
+        if self.disparador is not None:
+            self._mano = self.disparador.evaluar(detecciones, self.motor.zonas)
+        for confirmado in self.motor.procesar(gasas, f.t, f.momento, self._mano.activa,
+                                              self._mano.confianza):
             self._emitir(confirmado)
 
         if self.config.mostrar:
@@ -204,13 +228,16 @@ class ServicioVision:
             cv2.putText(lienzo, NOMBRE_ZONA[zona.tipo], (int(x), max(14, int(y) - 6)),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, COLOR_ZONA[zona.tipo], 1, cv2.LINE_AA)
         for d in detecciones:
-            color = (80, 200, 80) if d.clase == GASA else (180, 180, 0)
+            color = ((80, 200, 80) if d.clase == GASA else
+                     (0, 165, 255) if d.clase == MANO else (180, 180, 0))
             cv2.rectangle(lienzo, (int(d.x0), int(d.y0)), (int(d.x1), int(d.y1)), color, 2)
             cv2.putText(lienzo, f"{d.clase} {d.confianza:.2f}", (int(d.x0), int(d.y0) - 4),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1, cv2.LINE_AA)
         fps = self.fuente.fps_medido
         pie = f"{self.config.box} | {fps:.1f} fps | eventos: {len(self.eventos)}" if fps else \
             f"{self.config.box} | eventos: {len(self.eventos)}"
+        if self.disparador is not None:
+            pie += " | mano: " + ("SI" if self._mano.activa else "no")
         if self.publicador:
             pie += " | servidor: " + ("conectado" if self.publicador.conectado else "SIN CONEXION")
         cv2.putText(lienzo, pie + " | q para salir", (8, f.alto - 10),

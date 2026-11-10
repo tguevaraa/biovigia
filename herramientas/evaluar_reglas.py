@@ -42,6 +42,8 @@ def main() -> int:
     ap.add_argument("--zonas", type=pathlib.Path, default=RAIZ / "vision" / "zonas.json")
     ap.add_argument("--detector", choices=["yolo", "movimiento"])
     ap.add_argument("--modelo", type=pathlib.Path)
+    ap.add_argument("--disparador", choices=["auto", "si", "no"],
+                    help="Disparador por mano (por defecto, el de vision/.env)")
     ap.add_argument("--mostrar", action="store_true")
     args = ap.parse_args()
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
@@ -51,6 +53,8 @@ def main() -> int:
         config.detector = args.detector
     if args.modelo:
         config.modelo = args.modelo
+    if args.disparador:
+        config.disparador = args.disparador
     config.mostrar = args.mostrar
     zonas = ConjuntoZonas.cargar(args.zonas)
     if not zonas.completas:
@@ -70,7 +74,8 @@ def main() -> int:
             continue
         try:
             detector = crear_detector(config.detector, config.modelo,
-                                      config.parametros.umbral_confianza, config.imgsz)
+                                      config.parametros.umbral_confianza, config.imgsz,
+                                      detectar_mano=config.disparador == "si")
         except ErrorModelo as exc:
             print(f"✗ {exc}")
             return 1

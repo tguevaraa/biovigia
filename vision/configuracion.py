@@ -48,6 +48,13 @@ class ParametrosReglas:
     # Memoria de objetos ya contados: evita contar dos veces una gasa que sigue a la vista.
     memoria_s: float = 60.0
     radio_memoria: float = 0.06  # fracción del ancho del fotograma
+    # Disparador por mano (docs/deteccion-dos-etapas.md). Una gasa solo puede confirmarse
+    # si hubo una mano cerca de los recipientes como mucho este tiempo antes o después
+    # de que apareciera.
+    gracia_mano_s: float = 2.0
+    # Cuánto se amplía la caja de cada zona para formar el área de aproximación (1.0 =
+    # el ancho y el alto de la zona, hacia cada lado).
+    margen_mano: float = 1.0
 
     def actualizar(self, valores: dict) -> list[str]:
         cambios = []
@@ -69,6 +76,9 @@ class Configuracion:
     box: str = "box-2"
     fuente: str = "0"
     detector: str = "yolo"
+    # auto: se activa si el modelo tiene la clase «mano» · si: lo exige (con el detector
+    # de desarrollo usa una mano aproximada por color de piel) · no: desactivado.
+    disparador: str = "auto"
     modelo: Path = RAIZ_VISION / "modelos" / "biovigia-gasa-v0.1.pt"
     nombre_modelo: str = ""
     imgsz: int = 640
@@ -117,6 +127,7 @@ def desde_entorno() -> Configuracion:
     c.box = _env("BOX", c.box)
     c.fuente = _env("FUENTE", c.fuente)
     c.detector = _env("DETECTOR", c.detector)
+    c.disparador = _env("DISPARADOR", c.disparador).strip().lower() or "auto"
     if _env("MODELO"):
         c.modelo = _ruta(_env("MODELO"))
     c.nombre_modelo = _env("NOMBRE_MODELO", "")
@@ -138,6 +149,8 @@ def desde_entorno() -> Configuracion:
     p.n_confirmacion = int(_env("N", str(p.n_confirmacion)))
     p.fps_muestreo = int(_env("FPS", str(p.fps_muestreo)))
     p.permanencia_s = float(_env("PERMANENCIA_S", str(p.permanencia_s)))
+    p.gracia_mano_s = float(_env("GRACIA_MANO_S", str(p.gracia_mano_s)))
+    p.margen_mano = float(_env("MARGEN_MANO", str(p.margen_mano)))
     return c
 
 
@@ -154,6 +167,9 @@ def argumentos() -> argparse.ArgumentParser:
     ap.add_argument("--fuente", help="Índice de la cámara (0), ruta de un video o URL rtsp://")
     ap.add_argument("--detector", choices=["yolo", "movimiento"],
                     help="yolo: modelo entrenado. movimiento: detector de desarrollo sin modelo")
+    ap.add_argument("--disparador", choices=["auto", "si", "no"],
+                    help="Disparador por mano: auto (si el modelo tiene la clase mano), "
+                         "si (obligatorio) o no")
     ap.add_argument("--modelo", help="Ruta a los pesos .pt u .onnx")
     ap.add_argument("--box", help="Código del puesto (por defecto box-2)")
     ap.add_argument("--servidor", help="URL del servidor, p. ej. http://localhost:8000")
@@ -176,6 +192,8 @@ def aplicar_argumentos(c: Configuracion, args: argparse.Namespace) -> Configurac
         c.fuente = args.fuente
     if args.detector:
         c.detector = args.detector
+    if getattr(args, "disparador", None):
+        c.disparador = args.disparador
     if args.modelo:
         c.modelo = _ruta(args.modelo)
     if args.box:

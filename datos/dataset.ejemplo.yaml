@@ -14,3 +14,6 @@ names:
   0: gasa
   1: recipiente_rojo
   2: recipiente_comun
+  # Opcional: activa el disparador por mano (docs/deteccion-dos-etapas.md). Anota la
+  # mano y el antebrazo visibles en una sola caja.
+  3: mano

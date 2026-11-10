@@ -13,6 +13,11 @@ Un descarte se confirma cuando la trayectoria de una gasa:
 Una gasa que pasa cerca de la boca y se retira falla 1 o 2; una que reaparece antes de
 la ventana cancela la confirmación. Cada pista produce como máximo un evento, y una
 memoria de lo ya contado evita duplicar una gasa que queda a la vista dentro del recipiente.
+
+Con el disparador por mano activo (``exige_mano``) hay una cuarta condición: la gasa tuvo
+que aparecer junto a una mano. Una trayectoria que nace sin mano cerca —un reflejo, un
+papel que ya estaba en el recipiente— no genera evento y queda en la memoria para que
+tampoco lo genere si reaparece cuando una mano le pasa por encima.
 """
 from __future__ import annotations
 
@@ -51,6 +56,8 @@ class Historial:
     observaciones: deque = field(default_factory=lambda: deque(maxlen=120))
     cerrada: bool = False
     residual: bool = False  # nació sobre una gasa ya contada: no genera eventos
+    vio_mano: bool = True   # con el disparador activo: apareció junto a una mano
+    confianza_mano: float = 0.0
 
     @property
     def ultima(self) -> Observacion:
@@ -195,6 +202,11 @@ class MotorConfirmacion:
         self.historiales: dict[int, Historial] = {}
         self.memoria: list[_Recuerdo] = []
         self.descartadas = 0  # trayectorias que no se confirmaron (paso cercano, salida)
+        # Disparador por mano. Lo activa el servicio cuando el detector distingue manos.
+        self.exige_mano = False
+        self.sin_mano = 0     # trayectorias ignoradas por no haber aparecido con una mano
+        self._ultima_mano_t: Optional[float] = None
+        self._confianza_mano = 0.0
 
     def zona_de(self, det: Deteccion) -> Optional[str]:
         cx, cy = det.centro
@@ -210,10 +222,33 @@ class MotorConfirmacion:
                     return True
         return False
 
-    def procesar(self, gasas: list[Deteccion], t: float, momento: datetime) -> list[Confirmado]:
+    def _mano_reciente(self, t: float) -> bool:
+        return (self._ultima_mano_t is not None
+                and t - self._ultima_mano_t <= self.p.gracia_mano_s)
+
+    def _actualizar_mano(self, h: Historial, zona: Optional[str], t: float) -> None:
+        """Decide si la trayectoria apareció con una mano; si no, la deja como residual."""
+        if not self.exige_mano or h.residual:
+            return
+        if self._mano_reciente(t):
+            if not h.vio_mano and t - h.primera.t <= self.p.gracia_mano_s:
+                h.vio_mano = True
+            if h.vio_mano:
+                h.confianza_mano = max(h.confianza_mano, self._confianza_mano)
+        if not h.vio_mano and t - h.primera.t > self.p.gracia_mano_s:
+            h.residual = True
+            self.sin_mano += 1
+            if zona is not None:
+                self.memoria.append(_Recuerdo(zona, h.ultima.centro, t))
+
+    def procesar(self, gasas: list[Deteccion], t: float, momento: datetime,
+                 mano_activa: bool = False, confianza_mano: float = 0.0) -> list[Confirmado]:
         self.seguidor.max_perdida_s = self.p.ventana_confirmacion_s
         visibles = [d for d in gasas if d.confianza >= self.p.umbral_confianza]
         confirmados: list[Confirmado] = []
+        if mano_activa:
+            self._ultima_mano_t = t
+            self._confianza_mano = confianza_mano
 
         for pista, es_nueva in self.seguidor.actualizar(visibles, t):
             det = pista.deteccion
@@ -221,11 +256,13 @@ class MotorConfirmacion:
             cerca = self._cerca_de_recuerdo(zona, det.centro, t)
             h = self.historiales.get(pista.id)
             if h is None:
-                h = Historial(pista.id, residual=es_nueva and cerca)
+                h = Historial(pista.id, residual=es_nueva and cerca,
+                              vio_mano=not self.exige_mano or self._mano_reciente(t))
                 self.historiales[pista.id] = h
             h.observaciones.append(Observacion(t, momento, zona, det.confianza, det.area,
                                                det.centro))
-            if not h.cerrada and not h.residual:
+            self._actualizar_mano(h, zona, t)
+            if not h.cerrada and not h.residual and h.vio_mano:
                 c = self._por_permanencia(h, t)
                 if c:
                     confirmados.append(c)
@@ -235,11 +272,13 @@ class MotorConfirmacion:
             if t - h.ultima.t < self.p.ventana_confirmacion_s:
                 continue
             if not h.cerrada and not h.residual:
-                c = self._confirmar(h, "desaparicion")
+                c = self._confirmar(h, "desaparicion") if h.vio_mano else None
                 if c:
                     confirmados.append(c)
-                else:
+                elif h.vio_mano:
                     self.descartadas += 1
+                else:
+                    self.sin_mano += 1
             del self.historiales[pid]
             self.seguidor.olvidar(pid)
 
@@ -266,6 +305,9 @@ class MotorConfirmacion:
         if decision is None:
             return None
         h.cerrada = True
+        if self.exige_mano:
+            decision.rasgos.update(mano_detectada=True,
+                                   confianza_mano=round(h.confianza_mano, 3))
         ultima = h.ultima
         self.memoria.append(_Recuerdo(decision.zona, ultima.centro, ultima.t))
         log.info("Descarte confirmado en %s (pista %s, %s, %s obs. en zona)", decision.zona,

@@ -54,6 +54,28 @@ No grabes veinte veces lo mismo. Cambia en cada clip al menos una cosa:
 
 Si todos los clips son idénticos, el modelo aprende ese caso y falla con cualquier otro.
 
+### Que se vea la mano entrando
+
+En los clips `rojo_`, `comun_` y `negativo_`, empieza a grabar **con la mano fuera del
+cuadro** y deja que entre, descarte y salga. La propuesta de detección en dos etapas
+(`docs/deteccion-dos-etapas.md`) usa la mano como disparador para buscar la gasa, y esas
+imágenes de la mano acercándose son las que la entrenan. Un clip que arranca con la mano
+ya sobre el recipiente no sirve para eso.
+
+### Opcional: clips de plano abierto
+
+Para dejar abierta la detección de la postura del brazo sin volver a montar la escena,
+graba **tres clips extra** con la cámara más lejos, de modo que se vea el brazo completo
+(hombro, codo y muñeca) de alguien que se acerca con el brazo flexionado y descarta:
+
+```
+datos/videos/postura/postura_01.mp4
+```
+
+Van en la subcarpeta `postura/` para que `verificar_videos.py` no los cuente. Grábalos
+**con otro teléfono**, sin tocar la cámara principal: esa no se puede mover. Si solo hay
+un teléfono, grábalos al final y devuélvelo exactamente a las marcas de cinta.
+
 ---
 
 ## 3. Dónde van
