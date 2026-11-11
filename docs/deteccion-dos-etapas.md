@@ -2,7 +2,7 @@
 
 **Estado: etapa 1 (disparador) implementada en la rama `vision/deteccion-dos-etapas`,
 pendiente de revisión por Francisco y Ezequiel. Etapa 2 (recorte) sin empezar.**
-**Autor: Tommy Guevara · 10/11/2026 · Parte de la rama `integracion/mvp`**
+**Autor: Tommy Guevara · 10/11/2026 · Rama `vision/deteccion-dos-etapas`, sale de `integracion/mvp` (aún sin fusionar)**
 
 ## El problema
 
