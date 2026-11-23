@@ -5,6 +5,7 @@
     python herramientas/probar_modelo.py --modelo vision/modelos/otro.pt --fuente 1
     python herramientas/probar_modelo.py --fuente datos/videos/rojo_01.mp4 --confianza 0.4
     python herramientas/probar_modelo.py --sin-estabilizar                 # cajas crudas, para comparar
+    python herramientas/probar_modelo.py --objeto vision/modelos/biovigia-jeringas-v0.1.pt
 
 Las cajas se estabilizan en el tiempo (vision/estabilizador.py): no parpadean cuando la
 confianza ronda el umbral y se mantienen un momento si una mano tapa el tacho (línea fina).
@@ -21,6 +22,10 @@ import sys
 import time
 
 RAIZ = pathlib.Path(__file__).resolve().parents[1]
+# La consola de Windows (cp1252) no tiene ✓, ▸ ni →: se reemplazan en vez de cortar.
+for _flujo in (sys.stdout, sys.stderr):
+    if hasattr(_flujo, "reconfigure"):
+        _flujo.reconfigure(errors="replace")
 sys.path.insert(0, str(RAIZ))
 
 try:
@@ -46,6 +51,9 @@ def main() -> int:
     ap.add_argument("--modelo-gasas", type=pathlib.Path,
                     default=RAIZ / "vision" / "modelos" / "biovigia-gasas-v0.5.pt",
                     help="Modelo de gasas (si existe se usa también)")
+    ap.add_argument("--objeto", type=pathlib.Path, action="append", default=[],
+                    help="Otro modelo de un objeto chico (jeringas, curitas…); se puede repetir. "
+                         "La etiqueta es el nombre de clase del modelo")
     ap.add_argument("--modelo-personas", type=pathlib.Path,
                     default=RAIZ / "vision" / "modelos" / "yolo11n-coco.pt",
                     help="YOLO original (COCO) para las personas; vacío = no usarlo")
@@ -70,11 +78,17 @@ def main() -> int:
         print(f"✗ No existe {args.modelo}")
         return 1
     modelo = YOLO(str(args.modelo))
-    personas = gasas = None
+    personas = None
     if str(args.modelo_personas) and args.modelo_personas.exists():
         personas = YOLO(str(args.modelo_personas))
-    if str(args.modelo_gasas) and args.modelo_gasas.exists():
-        gasas = YOLO(str(args.modelo_gasas))
+    # Objetos chicos que se mueven con la mano: la gasa y los que agregue el equipo.
+    objetos = []
+    for ruta in ([args.modelo_gasas] if str(args.modelo_gasas) else []) + args.objeto:
+        if ruta.exists():
+            objetos.append(YOLO(str(ruta)))
+        else:
+            print(f"✗ No existe {ruta}; se sigue sin él")
+    clases_objeto = {n for m in objetos for n in m.names.values()}
     estabilizador = None if args.sin_estabilizar else Estabilizador(
         umbral_alta=args.confianza, umbral_baja=min(0.15, args.confianza))
     fuente = crear_fuente(args.fuente, 640, 480, 30)
@@ -100,11 +114,15 @@ def main() -> int:
                                       classes=[0], verbose=False)[0]
                 detecciones += [Deteccion("persona", c, *xyxy) for xyxy, c in
                                 zip(rp.boxes.xyxy.tolist(), rp.boxes.conf.tolist())]
-            if gasas is not None:
+            if objetos:
                 def detectar_gasas(recorte):
-                    rg = gasas.predict(recorte, conf=minima, imgsz=args.imgsz, verbose=False)[0]
-                    return [Deteccion("gasa", c, *xyxy) for xyxy, c in
-                            zip(rg.boxes.xyxy.tolist(), rg.boxes.conf.tolist())]
+                    halladas = []
+                    for m in objetos:
+                        rg = m.predict(recorte, conf=minima, imgsz=args.imgsz, verbose=False)[0]
+                        halladas += [Deteccion(rg.names[int(k)], c, *xyxy) for xyxy, c, k in
+                                     zip(rg.boxes.xyxy.tolist(), rg.boxes.conf.tolist(),
+                                         rg.boxes.cls.tolist())]
+                    return halladas
 
                 encontradas = detectar_gasas(imagen)
                 if args.con_recortes:
@@ -122,12 +140,12 @@ def main() -> int:
             if estabilizador is None:
                 dibujar = [(d, False) for d in detecciones]
             else:
-                # El estabilizador es para objetos casi quietos (tachos, personas). Una gasa se
-                # mueve rápido: retenerla deja una estela de cajas viejas, así que va directa.
+                # El estabilizador es para objetos casi quietos (tachos, personas). Una gasa
+                # (o una jeringa) se mueve rápido: retenerla deja una estela de cajas viejas.
                 dibujar = [(o.caja, o.retenido(f.t)) for o in estabilizador.actualizar(
-                    [d for d in detecciones if d.clase != "gasa"], f.t)]
+                    [d for d in detecciones if d.clase not in clases_objeto], f.t)]
                 dibujar += [(d, False) for d in detecciones
-                            if d.clase == "gasa" and d.confianza >= args.confianza]
+                            if d.clase in clases_objeto and d.confianza >= args.confianza]
             cuenta: dict[str, int] = {}
             for d, retenida in dibujar:
                 cuenta[d.clase] = cuenta.get(d.clase, 0) + 1

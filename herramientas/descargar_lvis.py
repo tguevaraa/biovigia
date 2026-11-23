@@ -34,6 +34,10 @@ except ImportError:
     sys.exit("Faltan dependencias: pip install -r requirements-vision.txt")
 
 RAIZ = pathlib.Path(__file__).resolve().parents[1]
+# La consola de Windows (cp1252) no tiene ✓, ▸ ni →: se reemplazan en vez de cortar.
+for _flujo in (sys.stdout, sys.stderr):
+    if hasattr(_flujo, "reconfigure"):
+        _flujo.reconfigure(errors="replace")
 ANOTACIONES = "https://dl.fbaipublicfiles.com/LVIS/lvis_v1_{split}.json.zip"
 LADO_MAX = 1024
 

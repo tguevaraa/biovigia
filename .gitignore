@@ -28,6 +28,8 @@ datos/externos/
 # Salidas que Ultralytics deja en la raíz (validaciones) y pesos de CLIP de YOLO-World
 runs/
 weights/
+# Pesos que Ultralytics descarga en la carpeta desde donde se corre (yolo11n.pt, sam2.1_b.pt…)
+/*.pt
 datos/dataset.yaml
 vision/.env
 herramientas/.ultimo_lote_simulador

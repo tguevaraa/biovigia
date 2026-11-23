@@ -35,6 +35,10 @@ except ImportError:
     sys.exit("Faltan dependencias: pip install -r requirements-vision.txt")
 
 RAIZ = pathlib.Path(__file__).resolve().parents[1]
+# La consola de Windows (cp1252) no tiene ✓, ▸ ni →: se reemplazan en vez de cortar.
+for _flujo in (sys.stdout, sys.stderr):
+    if hasattr(_flujo, "reconfigure"):
+        _flujo.reconfigure(errors="replace")
 ANOTACIONES = {
     "train": "https://storage.googleapis.com/openimages/v6/oidv6-train-annotations-bbox.csv",
     "validation": "https://storage.googleapis.com/openimages/v5/validation-annotations-bbox.csv",

@@ -2,9 +2,115 @@
 
 **Autor: Tommy Guevara · 22/11/2026 · Rama `vision/deteccion-dos-etapas`**
 
-Guía para que cualquiera del equipo pueda reentrenar los modelos de BioVigIA (tachos,
-gasas) igual que se viene haciendo, medirlos y probarlos en vivo. Si trabajas con Claude,
-lee también la [sección 9](#9-si-trabajas-con-claude).
+Guía para que cualquiera del equipo pueda entrenar los modelos de BioVigIA (gasas, tachos,
+jeringas, curitas…) igual que se viene haciendo, medirlos y probarlos en vivo. Si trabajas
+con Claude, lee también la [sección 9](#9-si-trabajas-con-claude).
+
+---
+
+## 0. Pasos para entrenar un objeto nuevo (resumen)
+
+Es el camino que funcionó con la gasa: **clips propios + un clic por clip**. Las imágenes
+de internet sirven poco (ver la [sección 8](#8-lo-que-se-probó-y-no-funcionó)). El ejemplo
+usa `jeringa`; para curitas cambia `jeringa` por `curita` en cada comando.
+
+Todos los comandos van **desde la raíz del repo**, con el entorno activado
+(`.\.venv\Scripts\activate`). Si el equipo no está preparado, haz antes la
+[sección 2](#2-preparar-el-equipo-una-vez).
+
+**1. Grabar clips con el objeto** (en la sala y con la cámara donde se va a usar):
+
+```powershell
+python herramientas/grabar_clips.py --tomas objeto --salida datos/videos/jeringas --prefijo jeringa
+```
+
+- En pantalla aparece la toma sugerida: cerca, lejos, al tacho, al piso, delante del
+  cuerpo, con luz apagada, otra persona, dos a la vez…
+- **Espacio** graba y corta · **n** salta la toma · **q** sale. Clips de 10–20 s.
+- Graba **dos rondas** de las 10 tomas, con **ropa distinta** en cada ronda.
+
+**2. Grabar la misma escena sin el objeto** (enseña qué NO es una jeringa):
+
+```powershell
+python herramientas/grabar_negativos.py --segundos 90 --salida datos/externos/jeringas-negativos --prefijo neg
+```
+
+Durante esos 90 s no debe verse ninguna jeringa. La gente puede moverse normalmente.
+
+**3. Marcar el objeto con un clic por clip:**
+
+```powershell
+python herramientas/marcar_con_un_clic.py --videos datos/videos/jeringas --salida datos/externos/jeringas-propias --clase jeringa --val jeringa_12 jeringa_15 jeringa_18
+```
+
+- `--val`: 3 o 4 clips **de la segunda ronda** que no se usan para entrenar (sirven para
+  medir). Elige tomas distintas: lejos, al tacho, luz apagada…
+- En cada clip: mueve la barra a **un** fotograma donde el objeto se vea bien, **un clic en
+  el centro de cada objeto** visible (no en los dedos) y **Enter**. Mover la barra después
+  borra los clics. `s` salta el clip, `Esc` termina (lo marcado queda guardado).
+- Al final SAM 2 lo sigue solo por cada clip. **Abre `datos/externos/jeringas-propias/muestra.jpg`**
+  y revisa que las cajas estén sobre el objeto.
+
+**4. Armar el dataset:**
+
+```powershell
+python herramientas/armar_dataset_tachos.py --clase jeringa --salida datos/externos/jeringas-v0.1 --fuente propias=datos/externos/jeringas-propias --negativas neg=datos/externos/jeringas-negativos
+```
+
+Si tienes descargado Open Images (sección 4, paso 1), suma más negativos con
+`--negativas oi=datos/externos/openimages --max-negativas 800`.
+
+**5. Entrenar** (unos 30–50 min con GPU NVIDIA; desde `datos\runs`):
+
+```powershell
+cd datos\runs
+python ..\..\herramientas\entrenar_modelo.py --datos ..\externos\jeringas-v0.1\dataset.yaml --epocas 60 --nombre biovigia-jeringas-v0.1 --dispositivo 0 > entrenamiento-jeringas-v0.1.log 2>&1
+cd ..\..
+```
+
+Al terminar, el modelo queda en `vision/modelos/biovigia-jeringas-v0.1.pt`.
+
+**6. Medir con los clips de validación.** Crea `datos/externos/jeringas-val.yaml`:
+
+```yaml
+path: C:/Users/<tu-usuario>/dev/biovigia/datos/externos/jeringas-propias
+train: val/images
+val: val/images
+names:
+  0: jeringa
+```
+
+y corre:
+
+```powershell
+python herramientas/entrenar_modelo.py --datos datos/externos/jeringas-val.yaml --solo-evaluar vision/modelos/biovigia-jeringas-v0.1.pt
+python herramientas/medir_falsos_positivos.py vision/modelos/biovigia-jeringas-v0.1.pt --carpeta datos/externos/jeringas-negativos/prueba/images
+```
+
+Lo que buscamos: **mAP@0,5 ≥ 0,80** en los clips de validación y **0 %** de fotos con
+falsos positivos. Si no llega, mira en qué tomas falla y graba más de esas (con la gasa,
+la caída delante del cuerpo se arregló así: de 0,13 a 0,94).
+
+**7. Probarlo en vivo con la cámara:**
+
+```powershell
+python herramientas/probar_modelo.py --objeto vision/modelos/biovigia-jeringas-v0.1.pt
+```
+
+Muestra el objeto en la mano, cerca y lejos, delante del cuerpo y tirándolo al tacho.
+Prueba también **sin** el objeto: no debería aparecer ninguna caja. `q` sale.
+
+**8. Compartir el resultado:**
+
+- El `.pt` **no va a git**: pásalo por Drive o USB a quien integra el sistema.
+- Anota en la [sección 7](#7-resultados-hasta-hoy) de esta guía el mAP, los falsos
+  positivos y cuántos clips usaste.
+- Para mejorar una versión: graba más clips, márcalos con otra carpeta de salida, súmala
+  con otra `--fuente` en el paso 4 y entrena `v0.2`. **Nunca** sobrescribas una versión.
+
+> **Integrarlo al servicio de visión** (que los eventos cuenten jeringas o curitas) es otro
+> paso: hoy las reglas solo confirman descartes de gasa. Cuando el modelo pase el paso 6,
+> avísenle a Tommy.
 
 ---
 

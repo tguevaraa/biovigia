@@ -18,9 +18,14 @@ from __future__ import annotations
 
 import argparse
 import pathlib
+import sys
 import time
 
 RAIZ = pathlib.Path(__file__).resolve().parents[1]
+# La consola de Windows (cp1252) no tiene ✓, ▸ ni →: se reemplazan en vez de cortar.
+for _flujo in (sys.stdout, sys.stderr):
+    if hasattr(_flujo, "reconfigure"):
+        _flujo.reconfigure(errors="replace")
 VENTANA = "Grabar clips - Espacio graba/corta, n siguiente toma, q sale"
 
 TOMAS = [
@@ -46,7 +51,20 @@ TOMAS_CUERPO = [
     "Llevar la gasa al tacho pasando por delante del cuerpo",
     "Otra persona: gasa delante del pecho",
 ]
-LISTAS = {"general": TOMAS, "cuerpo": TOMAS_CUERPO}
+# Para cualquier otro objeto (jeringa, curita…): las mismas situaciones, sin nombrar la gasa.
+TOMAS_OBJETO = [
+    "Objeto en la mano, cerca de la camara, girandolo",
+    "Objeto en la mano, lejos (otro lado de la sala)",
+    "Llevar el objeto al tacho y soltarlo adentro",
+    "Tirar el objeto al piso",
+    "Objeto apoyado en la mesa, alguien pasa cerca",
+    "Objeto delante del pecho, de frente a la camara",
+    "Pasar el objeto de una mano a la otra por delante del cuerpo",
+    "Con la luz apagada (o solo una lampara): objeto en la mano",
+    "Otra persona sostiene el objeto",
+    "Dos objetos a la vez, en las dos manos",
+]
+LISTAS = {"general": TOMAS, "cuerpo": TOMAS_CUERPO, "objeto": TOMAS_OBJETO}
 
 
 def main() -> int:
@@ -57,7 +75,8 @@ def main() -> int:
     ap.add_argument("--prefijo", default="cuarto")
     ap.add_argument("--fps", type=float, default=30)
     ap.add_argument("--tomas", choices=sorted(LISTAS), default="general",
-                    help="Lista de tomas sugeridas (cuerpo = gasa delante del torso)")
+                    help="Lista de tomas sugeridas: general (gasa), cuerpo (gasa delante del torso), "
+                         "objeto (cualquier otro objeto: jeringa, curita…)")
     args = ap.parse_args()
 
     import cv2

@@ -21,6 +21,10 @@ import sys
 import time
 
 RAIZ = pathlib.Path(__file__).resolve().parents[1]
+# La consola de Windows (cp1252) no tiene ✓, ▸ ni →: se reemplazan en vez de cortar.
+for _flujo in (sys.stdout, sys.stderr):
+    if hasattr(_flujo, "reconfigure"):
+        _flujo.reconfigure(errors="replace")
 
 
 def resumen(modelo, imgsz: int) -> tuple[float, float]:
