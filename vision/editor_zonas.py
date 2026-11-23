@@ -26,7 +26,8 @@ VENTANA = "BioVigIA - editor de zonas"
 
 def capturar_referencia(config: Configuracion, calentamiento_s: float = 2.0) -> np.ndarray:
     """Toma un fotograma normalizado de la fuente, dejando que la cámara ajuste la exposición."""
-    fuente = crear_fuente(config.fuente, config.ancho, config.alto, config.parametros.fps_muestreo)
+    fuente = crear_fuente(config.fuente, config.ancho, config.alto, config.parametros.fps_muestreo,
+                          config.captura_ancho, config.captura_alto)
     try:
         limite = time.monotonic() + max(calentamiento_s, 0) + 10
         inicio = time.monotonic()

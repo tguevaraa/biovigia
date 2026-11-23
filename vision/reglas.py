@@ -10,6 +10,14 @@ Un descarte se confirma cuando la trayectoria de una gasa:
 2. cumple la regla k-de-N: de sus últimas N observaciones, al menos k están en esa zona,
 3. y la ausencia se sostiene durante la ventana de confirmación (la gasa no reaparece).
 
+Además, se ignora la gasa que **ya estaba en el tacho**: la que casi no se movió en toda
+su trayectoria (menos de ``desplazamiento_min``). Es una gasa de un descarte anterior que
+reaparece o se pierde cuando una mano la tapa; contarla duplicaría el evento. Una gasa
+que alguien trae y suelta recorre la imagen (en los clips propios, 150 a 190 px contra
+0 a 15 px de las que ya estaban). No se usa «nunca estuvo fuera de la zona»: con la
+cámara cenital la zona puede abarcar por donde entra la mano, y al arrancar los tachos
+tardan unos fotogramas en confirmarse.
+
 Una gasa que pasa cerca de la boca y se retira falla 1 o 2; una que reaparece antes de
 la ventana cancela la confirmación. Cada pista produce como máximo un evento, y una
 memoria de lo ya contado evita duplicar una gasa que queda a la vista dentro del recipiente.
@@ -58,6 +66,9 @@ class Historial:
     residual: bool = False  # nació sobre una gasa ya contada: no genera eventos
     vio_mano: bool = True   # con el disparador activo: apareció junto a una mano
     confianza_mano: float = 0.0
+    # Mayor distancia al punto donde nació, en píxeles. Se lleva aparte porque la cola
+    # ``observaciones`` olvida lo más viejo.
+    desplazamiento_max: float = 0.0
 
     @property
     def ultima(self) -> Observacion:
@@ -202,6 +213,7 @@ class MotorConfirmacion:
         self.historiales: dict[int, Historial] = {}
         self.memoria: list[_Recuerdo] = []
         self.descartadas = 0  # trayectorias que no se confirmaron (paso cercano, salida)
+        self.ya_dentro = 0    # gasas que ya estaban en el recipiente (no se movieron)
         # Disparador por mano. Lo activa el servicio cuando el detector distingue manos.
         self.exige_mano = False
         self.sin_mano = 0     # trayectorias ignoradas por no haber aparecido con una mano
@@ -261,6 +273,8 @@ class MotorConfirmacion:
                 self.historiales[pista.id] = h
             h.observaciones.append(Observacion(t, momento, zona, det.confianza, det.area,
                                                det.centro))
+            h.desplazamiento_max = max(h.desplazamiento_max, math.hypot(
+                det.centro[0] - h.primera.centro[0], det.centro[1] - h.primera.centro[1]))
             self._actualizar_mano(h, zona, t)
             if not h.cerrada and not h.residual and h.vio_mano:
                 c = self._por_permanencia(h, t)
@@ -303,6 +317,14 @@ class MotorConfirmacion:
     def _confirmar(self, h: Historial, motivo: str) -> Optional[Confirmado]:
         decision = self.regla.decidir(h, self.p, motivo)
         if decision is None:
+            return None
+        if h.desplazamiento_max < self.p.desplazamiento_min * self.ancho:
+            # No se movió: ya estaba dentro del recipiente. Se recuerda para que tampoco
+            # cuente si vuelve a aparecer.
+            h.cerrada = h.residual = True
+            self.ya_dentro += 1
+            self.memoria.append(_Recuerdo(decision.zona, h.ultima.centro, h.ultima.t))
+            log.debug("Pista %s ignorada: ya estaba en %s", h.pista_id, decision.zona)
             return None
         h.cerrada = True
         if self.exige_mano:

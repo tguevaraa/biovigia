@@ -95,13 +95,19 @@ def main(argv: list[str] | None = None) -> int:
         log.error("El servidor no aceptó la referencia: %s", r.error)
         return 1
 
-    zonas = ConjuntoZonas.cargar(config.archivo_zonas)
+    # Con zonas detectadas no se carga ningún polígono: las zonas salen de los tachos que el
+    # modelo ve en cada fotograma (vision/zonas_dinamicas.py).
+    zonas = (ConjuntoZonas() if config.zonas_detectadas
+             else ConjuntoZonas.cargar(config.archivo_zonas))
+    if config.zonas_detectadas:
+        log.info("Zonas detectadas: los tachos se reconocen en cada fotograma, sin polígonos "
+                 "fijos")
     if cliente is not None:
         remota = cliente.obtener_configuracion(config.box)
         if remota.aceptado and remota.datos:
             config.parametros.actualizar(remota.datos.get("parametros") or {})
             desde_servidor = ConjuntoZonas.desde_dict(remota.datos.get("zonas") or {})
-            if desde_servidor:
+            if desde_servidor and not config.zonas_detectadas:
                 zonas = desde_servidor
                 zonas.guardar(config.archivo_zonas, config.box)
         elif remota.estado == 401:
@@ -114,14 +120,16 @@ def main(argv: list[str] | None = None) -> int:
     try:
         detector = crear_detector(config.detector, config.modelo,
                                   config.parametros.umbral_confianza, config.imgsz,
-                                  detectar_mano=config.disparador == "si")
+                                  detectar_mano=config.disparador == "si",
+                                  compuesto=config.modelos_compuesto)
     except ErrorModelo as exc:
         log.error("%s", exc)
         return 2
 
     try:
         fuente = crear_fuente(config.fuente, config.ancho, config.alto,
-                              config.parametros.fps_muestreo)
+                              config.parametros.fps_muestreo,
+                              config.captura_ancho, config.captura_alto)
     except RuntimeError as exc:
         log.error("%s", exc)
         return 2

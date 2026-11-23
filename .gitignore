@@ -24,6 +24,10 @@ datos/anotaciones/
 datos/dataset/
 datos/runs/
 datos/sinteticos/
+datos/externos/
+# Salidas que Ultralytics deja en la raíz (validaciones) y pesos de CLIP de YOLO-World
+runs/
+weights/
 datos/dataset.yaml
 vision/.env
 herramientas/.ultimo_lote_simulador

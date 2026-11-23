@@ -3,6 +3,10 @@
 Aísla al resto del sistema de las particularidades de la cámara: entrega fotogramas de
 640 × 480 a la frecuencia de muestreo configurada, mide los fps reales y se reconecta sola
 si la cámara se cae. No persiste video (RNF-02).
+
+La cámara se lee a su resolución nativa (o la de ``BIOVIGIA_CAPTURA_ANCHO/ALTO``). La
+reducción a 640 × 480 conserva la proporción con bandas negras, y cada Fotograma lleva
+también el original para la búsqueda en recortes de alta resolución.
 """
 from __future__ import annotations
 
@@ -21,12 +25,43 @@ from .tipos import Fotograma
 log = logging.getLogger("vision.captura")
 
 
-def normalizar(imagen: np.ndarray, ancho: int, alto: int) -> np.ndarray:
+def encuadrar(imagen: np.ndarray, ancho: int,
+              alto: int) -> tuple[np.ndarray, float, int, int]:
+    """Reduce la imagen a ``ancho × alto`` sin deformarla.
+
+    Escala para que quepa entera y centra el resultado entre bandas negras (por ejemplo,
+    1920 × 1080 → 640 × 360 con bandas de 60 px arriba y abajo). Devuelve la imagen, la
+    escala y el desplazamiento ``(dx, dy)`` de las bandas.
+    """
     if imagen.ndim == 2:
         imagen = cv2.cvtColor(imagen, cv2.COLOR_GRAY2BGR)
-    if imagen.shape[1] == ancho and imagen.shape[0] == alto:
-        return imagen
-    return cv2.resize(imagen, (ancho, alto), interpolation=cv2.INTER_AREA)
+    alto_o, ancho_o = imagen.shape[:2]
+    if ancho_o == ancho and alto_o == alto:
+        return imagen, 1.0, 0, 0
+    escala = min(ancho / ancho_o, alto / alto_o)
+    nuevo_ancho = max(1, round(ancho_o * escala))
+    nuevo_alto = max(1, round(alto_o * escala))
+    interpolacion = cv2.INTER_AREA if escala < 1 else cv2.INTER_LINEAR
+    reducida = cv2.resize(imagen, (nuevo_ancho, nuevo_alto), interpolation=interpolacion)
+    if nuevo_ancho == ancho and nuevo_alto == alto:
+        return reducida, escala, 0, 0
+    dx, dy = (ancho - nuevo_ancho) // 2, (alto - nuevo_alto) // 2
+    lienzo = np.zeros((alto, ancho, 3), dtype=reducida.dtype)
+    lienzo[dy:dy + nuevo_alto, dx:dx + nuevo_ancho] = reducida
+    return lienzo, escala, dx, dy
+
+
+def normalizar(imagen: np.ndarray, ancho: int, alto: int) -> np.ndarray:
+    """Solo la imagen reducida, sin deformar (ver ``encuadrar``)."""
+    return encuadrar(imagen, ancho, alto)[0]
+
+
+def a_fotograma(imagen: np.ndarray, ancho: int, alto: int, t: float, momento: datetime,
+                indice: int) -> Fotograma:
+    """Arma el Fotograma con la imagen reducida y el original de la cámara."""
+    reducida, escala, dx, dy = encuadrar(imagen, ancho, alto)
+    return Fotograma(reducida, t, momento, indice, original=imagen, escala=escala,
+                     dx=dx, dy=dy)
 
 
 def abrir_captura(fuente: str) -> cv2.VideoCapture:
@@ -142,8 +177,8 @@ class FuenteArchivo(FuenteVideo):
             self._siguiente += self.paso
             t = self._indice / self.fps_origen
             self.medidor.marcar(t)
-            return Fotograma(normalizar(imagen, self.ancho, self.alto), t,
-                             self.inicio + timedelta(seconds=t), self._indice)
+            return a_fotograma(imagen, self.ancho, self.alto, t,
+                               self.inicio + timedelta(seconds=t), self._indice)
 
     def cambiar_fps(self, fps: int) -> None:
         super().cambiar_fps(fps)
@@ -165,9 +200,11 @@ class FuenteEnVivo(FuenteVideo):
     REINTENTO_S = 2.0
     SIN_FOTOGRAMA_S = 3.0  # sin fotogramas nuevos por este tiempo = cámara caída
 
-    def __init__(self, fuente: str, ancho: int, alto: int, fps: int) -> None:
+    def __init__(self, fuente: str, ancho: int, alto: int, fps: int,
+                 captura_ancho: int = 0, captura_alto: int = 0) -> None:
         super().__init__(ancho, alto, fps)
         self.fuente = fuente
+        self.captura_ancho, self.captura_alto = captura_ancho, captura_alto
         self._cap: Optional[cv2.VideoCapture] = None
         self._ultimo: Optional[np.ndarray] = None
         self._ultimo_t = 0.0
@@ -183,10 +220,14 @@ class FuenteEnVivo(FuenteVideo):
         if not cap.isOpened():
             cap.release()
             return False
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.ancho)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.alto)
+        # Antes se pedía el tamaño de trabajo (640 × 480) y la cámara entregaba eso aunque
+        # pudiera dar más. Ahora se pide solo lo configurado; si no, la resolución nativa.
+        if self.captura_ancho > 0 and self.captura_alto > 0:
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.captura_ancho)
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.captura_alto)
         self._cap = cap
-        log.info("Cámara %s conectada", self.fuente)
+        log.info("Cámara %s conectada a %d × %d", self.fuente,
+                 int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
         return True
 
     def _bucle(self) -> None:
@@ -230,8 +271,8 @@ class FuenteEnVivo(FuenteVideo):
         self._entregado_t = ahora
         self._indice += 1
         self.medidor.marcar(ahora)
-        return Fotograma(normalizar(imagen, self.ancho, self.alto), ahora,
-                         datetime.now().astimezone(), self._indice)
+        return a_fotograma(imagen, self.ancho, self.alto, ahora,
+                           datetime.now().astimezone(), self._indice)
 
     def cerrar(self) -> None:
         self._activo = False
@@ -240,8 +281,9 @@ class FuenteEnVivo(FuenteVideo):
             self._cap.release()
 
 
-def crear_fuente(fuente: str, ancho: int, alto: int, fps: int) -> FuenteVideo:
+def crear_fuente(fuente: str, ancho: int, alto: int, fps: int,
+                 captura_ancho: int = 0, captura_alto: int = 0) -> FuenteVideo:
     es_archivo = not fuente.isdigit() and "://" not in fuente
     if es_archivo:
         return FuenteArchivo(fuente, ancho, alto, fps)
-    return FuenteEnVivo(fuente, ancho, alto, fps)
+    return FuenteEnVivo(fuente, ancho, alto, fps, captura_ancho, captura_alto)

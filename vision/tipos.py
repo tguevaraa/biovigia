@@ -13,6 +13,10 @@ RECIPIENTE_COMUN = "recipiente_comun"
 CLASES = (GASA, RECIPIENTE_ROJO, RECIPIENTE_COMUN)
 # Clase opcional: si el modelo la tiene, se activa el disparador por mano.
 MANO = "mano"
+# Con el detector compuesto: el modelo de tachos dice «recipiente» y el color decide si es
+# rojo o común; las personas vienen del YOLO de COCO.
+RECIPIENTE = "recipiente"
+PERSONA = "persona"
 
 ROJO = "rojo"
 COMUN = "comun"
@@ -21,12 +25,37 @@ VEREDICTO = {ROJO: "conforme", COMUN: "no_conforme"}
 
 @dataclass
 class Fotograma:
-    """Fotograma normalizado (640 × 480 por defecto) con su marca de tiempo."""
+    """Fotograma normalizado (640 × 480 por defecto) con su marca de tiempo.
+
+    ``imagen`` es la versión reducida, sin deformar: si la cámara entrega otra proporción
+    (16:9 en un teléfono), se escala para que quepa y se rellena con bandas negras.
+    ``original`` es la imagen tal como la entregó la cámara; ``escala``, ``dx`` y ``dy``
+    describen cómo se pasó de una a otra, para llevar cajas al original (etapa 2).
+    """
 
     imagen: np.ndarray
     t: float                 # segundos monótonos (o tiempo del video, si es un archivo)
     momento: datetime        # hora real con zona horaria, para fechar el evento
     indice: int = 0
+    original: Optional[np.ndarray] = field(default=None, repr=False)
+    escala: float = 1.0      # píxeles de «imagen» por píxel del original
+    dx: int = 0              # banda negra a la izquierda, en píxeles de «imagen»
+    dy: int = 0              # banda negra arriba, en píxeles de «imagen»
+
+    def caja_en_original(self, x0: float, y0: float, x1: float,
+                         y1: float) -> tuple[int, int, int, int]:
+        """Lleva una caja del fotograma reducido a píxeles del original, recortada a sus
+        bordes. Sin original, devuelve la misma caja dentro de ``imagen``."""
+        base = self.original if self.original is not None else self.imagen
+        alto, ancho = base.shape[:2]
+        escala = self.escala if self.original is not None else 1.0
+        dx, dy = (self.dx, self.dy) if self.original is not None else (0, 0)
+
+        def a_original(v: float, desplazamiento: int, limite: int) -> int:
+            return int(round(min(max((v - desplazamiento) / escala, 0), limite)))
+
+        return (a_original(x0, dx, ancho), a_original(y0, dy, alto),
+                a_original(x1, dx, ancho), a_original(y1, dy, alto))
 
     @property
     def alto(self) -> int:

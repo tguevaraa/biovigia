@@ -8,7 +8,8 @@ con lo que dice el nombre de cada archivo:
     comun_*.mp4 → exactamente un evento en el común      (no conforme)
     negativo_*, vacio_* → ningún evento
 
-    python herramientas/evaluar_reglas.py
+    python herramientas/evaluar_reglas.py                     # detector y zonas de vision/.env
+    python herramientas/evaluar_reglas.py --detector compuesto  # tachos reconocidos, sin polígonos
     python herramientas/evaluar_reglas.py --detector movimiento --videos datos/sinteticos \\
         --zonas datos/sinteticos/zonas.json
 """
@@ -40,7 +41,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     ap.add_argument("--videos", type=pathlib.Path, default=RAIZ / "datos" / "videos")
     ap.add_argument("--zonas", type=pathlib.Path, default=RAIZ / "vision" / "zonas.json")
-    ap.add_argument("--detector", choices=["yolo", "movimiento"])
+    ap.add_argument("--detector", choices=["compuesto", "yolo", "movimiento"])
     ap.add_argument("--modelo", type=pathlib.Path)
     ap.add_argument("--disparador", choices=["auto", "si", "no"],
                     help="Disparador por mano (por defecto, el de vision/.env)")
@@ -56,10 +57,13 @@ def main() -> int:
     if args.disparador:
         config.disparador = args.disparador
     config.mostrar = args.mostrar
-    zonas = ConjuntoZonas.cargar(args.zonas)
-    if not zonas.completas:
-        print(f"✗ {args.zonas} no tiene las dos zonas. Trázalas antes de evaluar.")
-        return 1
+    if config.zonas_detectadas:
+        zonas = ConjuntoZonas()  # las zonas salen de los tachos que reconoce el modelo
+    else:
+        zonas = ConjuntoZonas.cargar(args.zonas)
+        if not zonas.completas:
+            print(f"✗ {args.zonas} no tiene las dos zonas. Trázalas antes de evaluar.")
+            return 1
     videos = sorted(p for p in args.videos.glob("*") if p.suffix.lower() in EXTENSIONES)
     if not videos:
         print(f"✗ No hay videos en {args.videos}")
@@ -75,7 +79,8 @@ def main() -> int:
         try:
             detector = crear_detector(config.detector, config.modelo,
                                       config.parametros.umbral_confianza, config.imgsz,
-                                      detectar_mano=config.disparador == "si")
+                                      detectar_mano=config.disparador == "si",
+                                      compuesto=config.modelos_compuesto)
         except ErrorModelo as exc:
             print(f"✗ {exc}")
             return 1

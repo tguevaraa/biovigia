@@ -19,7 +19,8 @@ from typing import Protocol
 import cv2
 import numpy as np
 
-from .tipos import CLASES, GASA, MANO, RECIPIENTE_COMUN, RECIPIENTE_ROJO, Deteccion
+from .tipos import (CLASES, GASA, MANO, PERSONA, RECIPIENTE, RECIPIENTE_COMUN, RECIPIENTE_ROJO,
+                    Deteccion)
 
 log = logging.getLogger("vision.deteccion")
 
@@ -38,7 +39,38 @@ ALIAS = {
 
 
 class ErrorModelo(RuntimeError):
-    """El modelo no existe o no tiene las clases de BioVigIA."""
+    """El modelo no se puede usar: no existe, falta ultralytics o no tiene las clases.
+
+    Guarda el ``motivo`` (``"no_existe"``, ``"sin_ultralytics"`` o ``"sin_clase_gasa"``) y
+    la ``ruta`` del modelo para que quien la captura decida qué hacer sin leer el texto.
+    Los mensajes se crean con los métodos de clase, así quedan todos en un solo lugar.
+    """
+
+    NO_EXISTE = "no_existe"
+    SIN_ULTRALYTICS = "sin_ultralytics"
+    SIN_CLASE_GASA = "sin_clase_gasa"
+
+    def __init__(self, mensaje: str, motivo: str, ruta: Path | None = None) -> None:
+        super().__init__(mensaje)
+        self.motivo = motivo
+        self.ruta = ruta
+
+    @classmethod
+    def no_existe(cls, ruta: Path) -> "ErrorModelo":
+        return cls(f"No existe el modelo {ruta}. Entrénalo con herramientas/entrenar_modelo.py "
+                   "o usa --detector movimiento para probar sin modelo.", cls.NO_EXISTE, ruta)
+
+    @classmethod
+    def sin_ultralytics(cls, ruta: Path) -> "ErrorModelo":
+        return cls("Falta ultralytics: pip install -r requirements-vision.txt",
+                   cls.SIN_ULTRALYTICS, ruta)
+
+    @classmethod
+    def sin_clase_gasa(cls, ruta: Path, clases: list[str]) -> "ErrorModelo":
+        return cls(f"El modelo {ruta.name} no tiene la clase 'gasa' (clases: "
+                   f"{', '.join(clases)}). Un yolov8n.pt sin ajustar detecta objetos de COCO, "
+                   "no gasas: usa los pesos entrenados con datos/dataset.yaml.",
+                   cls.SIN_CLASE_GASA, ruta)
 
 
 class Detector(Protocol):
@@ -58,25 +90,21 @@ class DetectorYOLO:
     _candado = threading.Lock()
 
     def __init__(self, ruta: Path, umbral: float, imgsz: int = 640) -> None:
-        if not Path(ruta).exists():
-            raise ErrorModelo(
-                f"No existe el modelo {ruta}. Entrénalo con herramientas/entrenar_modelo.py o "
-                "usa --detector movimiento para probar sin modelo.")
+        ruta = Path(ruta)
+        if not ruta.exists():
+            raise ErrorModelo.no_existe(ruta)
         try:
             from ultralytics import YOLO
         except ImportError as exc:
-            raise ErrorModelo("Falta ultralytics: pip install -r requirements-vision.txt") from exc
+            raise ErrorModelo.sin_ultralytics(ruta) from exc
         self.modelo = YOLO(str(ruta))
-        self.nombre = Path(ruta).stem
+        self.nombre = ruta.stem
         self.umbral = umbral
         self.imgsz = imgsz
         nombres = getattr(self.modelo, "names", {}) or {}
         self.mapa = {int(i): ALIAS.get(_normalizar_nombre(n)) for i, n in nombres.items()}
         if GASA not in self.mapa.values():
-            raise ErrorModelo(
-                f"El modelo {Path(ruta).name} no tiene la clase 'gasa' (clases: "
-                f"{', '.join(map(str, nombres.values()))}). Un yolov8n.pt sin ajustar detecta "
-                "objetos de COCO, no gasas: usa los pesos entrenados con datos/dataset.yaml.")
+            raise ErrorModelo.sin_clase_gasa(ruta, [str(n) for n in nombres.values()])
         faltan = [c for c in CLASES if c not in self.mapa.values()]
         if faltan:
             log.warning("El modelo no tiene las clases %s; la verificación de alineación de "
@@ -175,8 +203,113 @@ class DetectorMovimiento:
         return manos
 
 
+def fraccion_roja(imagen: np.ndarray, d: Deteccion) -> float:
+    """Parte de la caja (sin los bordes) con tono rojo saturado: decide si un tacho es el
+    rojo (residuos biocontaminados) o el común."""
+    x0, y0, x1, y1 = (int(round(v)) for v in (d.x0, d.y0, d.x1, d.y1))
+    mx, my = (x1 - x0) // 6, (y1 - y0) // 6
+    recorte = imagen[max(0, y0 + my):max(0, y1 - my), max(0, x0 + mx):max(0, x1 - mx)]
+    if recorte.size == 0:
+        return 0.0
+    hsv = cv2.cvtColor(recorte, cv2.COLOR_BGR2HSV)
+    rojo = cv2.inRange(hsv, (0, 90, 60), (10, 255, 255)) | cv2.inRange(hsv, (170, 90, 60),
+                                                                         (180, 255, 255))
+    return float(np.count_nonzero(rojo)) / rojo.size
+
+
+class ParteYOLO:
+    """Un modelo YOLO de una sola tarea dentro del detector compuesto.
+
+    ``clase`` es el nombre que reciben TODAS sus detecciones (el modelo de gasas → «gasa»,
+    el de tachos → «recipiente», el de COCO → «persona»); ``clases_coco`` limita qué clases
+    del modelo se usan (en COCO, la 0 es «person»)."""
+
+    def __init__(self, ruta: Path, clase: str, imgsz: int = 640,
+                 clases_coco: list[int] | None = None) -> None:
+        ruta = Path(ruta)
+        if not ruta.exists():
+            raise ErrorModelo.no_existe(ruta)
+        try:
+            from ultralytics import YOLO
+        except ImportError as exc:
+            raise ErrorModelo.sin_ultralytics(ruta) from exc
+        self.modelo = YOLO(str(ruta))
+        self.nombre = ruta.stem
+        self.clase = clase
+        self.imgsz = imgsz
+        self.clases_coco = clases_coco
+
+    def detectar(self, imagen: np.ndarray, conf: float) -> list[Deteccion]:
+        r = self.modelo.predict(imagen, conf=conf, imgsz=self.imgsz, classes=self.clases_coco,
+                                verbose=False)[0]
+        cajas = getattr(r, "boxes", None)
+        if cajas is None or len(cajas) == 0:
+            return []
+        return [Deteccion(self.clase, float(c), float(x0), float(y0), float(x1), float(y1))
+                for (x0, y0, x1, y1), c in zip(cajas.xyxy.cpu().numpy(), cajas.conf.cpu().numpy())]
+
+
+class DetectorCompuesto:
+    """Varios modelos de una tarea cada uno, que se corren sobre el mismo fotograma.
+
+    Así cada objeto se entrena por separado (gasas, tachos y, más adelante, jeringas o
+    curitas) y no hace falta un conjunto de datos con todo anotado junto. Los tachos se
+    reconocen en cada fotograma, sin polígonos fijos: si alguien mueve uno, la zona lo
+    sigue (vision/zonas_dinamicas.py). El tipo de tacho lo decide el color.
+    """
+
+    detecta_mano = False
+
+    def __init__(self, partes: list, umbral: float, umbral_rojo: float = 0.25) -> None:
+        self.partes = partes
+        self.umbral = umbral
+        self.umbral_rojo = umbral_rojo
+        if not any(p.clase == GASA for p in partes):
+            raise ErrorModelo("El detector compuesto necesita un modelo de gasas "
+                              "(BIOVIGIA_MODELO_GASAS).", ErrorModelo.SIN_CLASE_GASA)
+        log.info("Detector compuesto: %s", ", ".join(f"{p.nombre} → {p.clase}" for p in partes))
+
+    @classmethod
+    def desde_rutas(cls, gasas: Path, tachos: Path | None, personas: Path | None,
+                    umbral: float, imgsz: int = 640, umbral_rojo: float = 0.25,
+                    ) -> "DetectorCompuesto":
+        partes = [ParteYOLO(gasas, GASA, imgsz)]
+        if tachos:
+            partes.append(ParteYOLO(tachos, RECIPIENTE, imgsz))
+        else:
+            log.warning("Sin modelo de tachos (BIOVIGIA_MODELO_TACHOS): no habrá zonas, así "
+                        "que no se podrán confirmar descartes.")
+        if personas and Path(personas).exists():
+            partes.append(ParteYOLO(personas, PERSONA, imgsz, clases_coco=[0]))
+        elif personas:
+            log.warning("No existe el modelo de personas %s; se sigue sin él.", personas)
+        return cls(partes, umbral, umbral_rojo)
+
+    @property
+    def nombre(self) -> str:
+        return "+".join(p.nombre.removeprefix("biovigia-") for p in self.partes)
+
+    def detectar(self, imagen: np.ndarray) -> list[Deteccion]:
+        # Como en DetectorYOLO, el filtro final lo hacen las reglas (umbral en caliente).
+        conf = min(self.umbral, 0.15)
+        detecciones: list[Deteccion] = []
+        for parte in self.partes:
+            for d in parte.detectar(imagen, conf):
+                if d.clase == RECIPIENTE:
+                    rojo = fraccion_roja(imagen, d) >= self.umbral_rojo
+                    d = Deteccion(RECIPIENTE_ROJO if rojo else RECIPIENTE_COMUN, d.confianza,
+                                  d.x0, d.y0, d.x1, d.y1)
+                detecciones.append(d)
+        return detecciones
+
+
 def crear_detector(tipo: str, ruta_modelo: Path, umbral: float, imgsz: int = 640,
-                   detectar_mano: bool = False) -> Detector:
+                   detectar_mano: bool = False, compuesto: dict | None = None) -> Detector:
+    if tipo == "compuesto":
+        c = compuesto or {}
+        return DetectorCompuesto.desde_rutas(c.get("gasas") or ruta_modelo, c.get("tachos"),
+                                             c.get("personas"), umbral, imgsz,
+                                             c.get("umbral_rojo", 0.25))
     if tipo == "movimiento":
         log.warning("Usando el detector de DESARROLLO por movimiento. Los eventos llevarán el "
                     "modelo 'dev-movimiento-v0'. Para la prueba de aceptación usa el modelo "

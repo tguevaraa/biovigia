@@ -58,6 +58,14 @@ def main() -> int:
     ap.add_argument("--lote", type=int, default=16)
     ap.add_argument("--nombre", default="biovigia-gasa-v0.1")
     ap.add_argument("--dispositivo", default=None, help="cpu, 0 (GPU), mps…")
+    ap.add_argument("--trabajadores", type=int, default=2,
+                    help="Procesos que cargan imágenes. Más es más rápido pero usa más RAM: "
+                         "con 8 y 16 GB de RAM el entrenamiento se quedó sin memoria")
+    ap.add_argument("--retomar", action="store_true",
+                    help="Continúa un entrenamiento interrumpido desde su last.pt")
+    ap.add_argument("--luz", choices=["normal", "fuerte"], default="normal",
+                    help="Aumentos de iluminación: fuerte = brillo ±70 %%, saturación ±80 %% y "
+                         "tono ±3 %% (para cámaras sin exposición fija o salas con luz variable)")
     ap.add_argument("--solo-evaluar", type=pathlib.Path, help="Evalúa unos pesos ya entrenados")
     ap.add_argument("--medir-fps", action="store_true", help="Mide fps en este equipo (RNF-09)")
     args = ap.parse_args()
@@ -73,13 +81,28 @@ def main() -> int:
 
     if args.solo_evaluar:
         pesos = args.solo_evaluar
+    elif args.retomar:
+        ultimo = RAIZ / "datos" / "runs" / args.nombre / "weights" / "last.pt"
+        if not ultimo.exists():
+            print(f"✗ No hay nada que retomar: falta {ultimo.relative_to(RAIZ)}")
+            return 1
+        YOLO(str(ultimo)).train(resume=True, workers=args.trabajadores)
+        pesos = RAIZ / "vision" / "modelos" / f"{args.nombre}.pt"
+        shutil.copy2(ultimo.with_name("best.pt"), pesos)
+        print(f"✓ Pesos copiados a {pesos.relative_to(RAIZ)}")
     else:
         modelo = YOLO(args.base)
+        # Color e iluminación: «normal» son los valores de Ultralytics; «fuerte» varía mucho
+        # más el brillo, la saturación y el tono. Ojo: con datos solo de internet (v0.3 del
+        # 20/11/2026) «fuerte» empeoró la detección en la escena propia salvo con luz muy
+        # baja (herramientas/evaluar_luz.py). Úsalo con clips propios grabados con luces reales.
+        luz = (dict(hsv_h=0.015, hsv_s=0.7, hsv_v=0.4) if args.luz == "normal"
+               else dict(hsv_h=0.03, hsv_s=0.8, hsv_v=0.7))
         modelo.train(data=str(args.datos), epochs=args.epocas, imgsz=args.imgsz,
                      batch=args.lote, device=args.dispositivo, project=str(RAIZ / "datos" / "runs"),
-                     name=args.nombre, exist_ok=True,
-                     # Aumentaciones moderadas: la escena es fija y la cámara no rota.
-                     degrees=0.0, flipud=0.0, fliplr=0.5, mosaic=1.0, hsv_v=0.4, scale=0.3)
+                     name=args.nombre, exist_ok=True, workers=args.trabajadores,
+                     # Aumentaciones geométricas moderadas: la cámara no rota.
+                     degrees=0.0, flipud=0.0, fliplr=0.5, mosaic=1.0, scale=0.3, **luz)
         mejores = RAIZ / "datos" / "runs" / args.nombre / "weights" / "best.pt"
         destino = RAIZ / "vision" / "modelos" / f"{args.nombre}.pt"
         shutil.copy2(mejores, destino)

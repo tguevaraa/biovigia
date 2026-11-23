@@ -110,6 +110,16 @@ class MotorTests(unittest.TestCase):
         e.vacio(3)
         self.assertEqual(e.fin(), [])
 
+    def test_gasa_que_ya_estaba_dentro_no_cuenta(self):
+        # Está quieta dentro del común (una gasa de un descarte anterior), una mano la tapa
+        # y «desaparece»: no se movió, así que no es un descarte nuevo.
+        e = Escenario()
+        for _ in range(FPS * 2):
+            e.cuadro(gasa(460, 272))
+        e.vacio(3)
+        self.assertEqual(e.fin(), [])
+        self.assertEqual(e.motor.ya_dentro, 1)
+
     def test_gasa_visible_dentro_del_recipiente_cuenta_una_vez(self):
         e = Escenario(permanencia_s=2.0)
         e.trayecto((460, 40), (460, 270), 8)

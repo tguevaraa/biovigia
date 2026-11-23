@@ -90,6 +90,32 @@ eventos falsos en el recipiente común durante un descarte al rojo, los duplicad
 dos clips `negativo_`. Eso depende de la calidad del detector de gasa, no del disparador,
 y es lo que deben resolver el modelo entrenado y la etapa 2.
 
+## Tachos reconocidos, sin polígonos (22/11/2026)
+
+Los tachos ya no se marcan con polígonos fijos: el servicio los **reconoce en cada
+fotograma** y la zona de cada uno es su caja detectada (ampliada hacia arriba, donde se
+suelta la gasa). Si alguien mueve un tacho o la cámara, la zona lo sigue.
+
+| Archivo | Qué hace |
+|---|---|
+| `vision/deteccion.py` · `DetectorCompuesto` | Corre un modelo por objeto sobre el mismo fotograma: gasas (`biovigia-gasas-v0.5`), tachos (`biovigia-tachos-v0.2`) y personas (`yolo11n-coco`). El tipo de tacho (rojo o común) lo decide el color. Jeringas y curitas se agregan igual. |
+| `vision/zonas_dinamicas.py` (nuevo) | Zonas a partir de los tachos detectados: estabilizadas, con el tipo por votación y retenidas 3 s si una mano tapa el tacho. |
+| `vision/reglas.py` | Regla nueva: una gasa que casi no se movió en toda su trayectoria ya estaba en el tacho y no cuenta (evita los duplicados). |
+| `vision/.env` | `BIOVIGIA_DETECTOR=compuesto`, `BIOVIGIA_MODELO_GASAS`, `_TACHOS`, `_PERSONAS`, `BIOVIGIA_MODO_ZONAS=detectadas`. |
+
+Medición con los mismos 20 videos (`herramientas/evaluar_reglas.py`, sin zonas dibujadas):
+
+| | Antes (desarrollo + polígonos) | Ahora (modelos + tachos reconocidos) | Meta |
+|---|---|---|---|
+| Exactitud de asignación (RNF-08) | 12/16 = 75 % | **16/16 = 100 %** | ≥ 90 % |
+| Eventos falsos (RNF-07) | 45 % | **10 %** (los 2 clips `negativo_`, 0 duplicados) | ≤ 5 % |
+
+Lo que falta para el RNF-07: en los `negativo_` la gasa llega a la boca y la mano se
+retira con ella escondida; para el sistema es igual que soltarla. Hace falta seguir la
+mano (pose: posición de la muñeca), ver «Postura del brazo» más abajo. Ojo: estos 20
+clips son cenitales y la gasa de esos clips está en el entrenamiento de v0.5; hay que
+repetir la medición con clips de la escena real que no se usaron para entrenar.
+
 ## Qué falta: la búsqueda en recorte (etapa 2)
 
 - `vision/captura.py`: conservar la imagen original en `Fotograma`, antes de reducirla.

@@ -16,6 +16,7 @@ from .cola import ColaLocal
 from .configuracion import Configuracion
 from .deteccion import Detector
 from .disparador import SIN_MANO, DisparadorMano
+from .estabilizador import quitar_contenidas
 from .evidencia import a_jpeg, recortar
 from .publicador import Publicador
 from .reglas import Confirmado, MotorConfirmacion, ReglaConClasificador, ReglaKdeN
@@ -23,6 +24,7 @@ from .tipos import (
     COMUN,
     GASA,
     MANO,
+    PERSONA,
     RECIPIENTE_COMUN,
     RECIPIENTE_ROJO,
     ROJO,
@@ -32,11 +34,13 @@ from .tipos import (
     id_externo_para,
 )
 from .zonas import ConjuntoZonas
+from .zonas_dinamicas import ZonasDinamicas
 
 log = logging.getLogger("vision.pipeline")
 
 COLOR_ZONA = {ROJO: (40, 40, 220), COMUN: (230, 230, 230)}
 NOMBRE_ZONA = {ROJO: "Recipiente rojo", COMUN: "Recipiente comun"}
+UMBRAL_DIBUJO = 0.35  # personas y tachos en la vista previa
 
 
 class ServicioVision:
@@ -54,6 +58,11 @@ class ServicioVision:
                  else ReglaKdeN())
         self.motor = MotorConfirmacion(zonas, config.parametros, regla, config.ancho,
                                        config.alto)
+        # Zonas detectadas: salen de los tachos que el modelo ve en cada fotograma, así
+        # siguen al tacho si lo mueven. Las zonas fijas quedan para el detector de desarrollo.
+        self.zonas_dinamicas = (ZonasDinamicas(config.ancho, config.alto)
+                                if config.zonas_detectadas else None)
+        self._sin_tachos_desde: Optional[float] = None
         self.disparador = self._crear_disparador()
         self.motor.exige_mano = self.disparador is not None
         self._mano = SIN_MANO
@@ -101,6 +110,8 @@ class ServicioVision:
             self.detector.umbral = self.config.parametros.umbral_confianza
             self.fuente.cambiar_fps(self.config.parametros.fps_muestreo)
             log.info("Parámetros actualizados desde el servidor: %s", ", ".join(cambios))
+        if self.zonas_dinamicas is not None:
+            return  # las zonas salen de los tachos detectados, no de PAN-09
         remotas = ConjuntoZonas.desde_dict(datos.get("zonas") or {})
         if remotas and remotas.como_dict() != self.motor.zonas.como_dict():
             self.motor.zonas = remotas
@@ -142,14 +153,19 @@ class ServicioVision:
         self._ultimo = f
         if self.publicador:
             self.publicador.observacion.observando(f.momento)
-        if not self.motor.zonas and not self._aviso_sin_zonas:
+        if (self.zonas_dinamicas is None and not self.motor.zonas
+                and not self._aviso_sin_zonas):
             log.warning("No hay zonas definidas: el sistema detecta pero no puede confirmar "
                         "descartes. Trázalas en PAN-09 o con  python -m vision --editar-zonas")
             self._aviso_sin_zonas = True
 
         detecciones = self.detector.detectar(f.imagen)
         gasas = [d for d in detecciones if d.clase == GASA]
-        self._verificar_alineacion(detecciones)
+        if self.zonas_dinamicas is not None:
+            self.motor.zonas = self.zonas_dinamicas.actualizar(detecciones, f.t)
+            self._vigilar_tachos(f.t)
+        else:
+            self._verificar_alineacion(detecciones)
         self._guardar_recortes(f, gasas)
 
         if self.disparador is not None:
@@ -172,6 +188,24 @@ class ServicioVision:
                 recorte = recortar(f.imagen, self.motor.zonas.get(zona_tipo))
                 if recorte is not None:
                     self._recortes[zona_tipo] = recorte
+
+    def _vigilar_tachos(self, t: float) -> None:
+        """Con zonas detectadas, «alineadas» significa que se ve al menos un tacho. Si no se
+        ve ninguno durante unos segundos (los taparon, se movió la cámara), se avisa."""
+        visible = self.zonas_dinamicas.alguno_visible
+        if visible:
+            if self._sin_tachos_desde is not None and self._zonas_alineadas is False:
+                log.info("Se vuelven a ver los tachos: %s", ", ".join(
+                    NOMBRE_ZONA[z.tipo] for z in self.motor.zonas))
+            self._sin_tachos_desde = None
+            self._zonas_alineadas = True
+            return
+        if self._sin_tachos_desde is None:
+            self._sin_tachos_desde = t
+        if t - self._sin_tachos_desde >= 5.0 and self._zonas_alineadas is not False:
+            log.warning("No se ve ningún tacho hace 5 s: no se pueden confirmar descartes. "
+                        "¿Los taparon o se movió la cámara?")
+            self._zonas_alineadas = False
 
     def _verificar_alineacion(self, detecciones: list[Deteccion]) -> None:
         """Si el detector ve los recipientes fuera de sus zonas, la cámara se movió."""
@@ -227,9 +261,16 @@ class ServicioVision:
             x, y = pts.min(axis=0)
             cv2.putText(lienzo, NOMBRE_ZONA[zona.tipo], (int(x), max(14, int(y) - 6)),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, COLOR_ZONA[zona.tipo], 1, cv2.LINE_AA)
-        for d in detecciones:
+        # Solo lo que cuenta: el detector entrega cajas desde confianza muy baja para que las
+        # reglas puedan cambiar el umbral en caliente, pero dibujarlas todas confunde.
+        umbral_gasa = self.config.parametros.umbral_confianza
+        visibles = quitar_contenidas([
+            d for d in detecciones
+            if d.confianza >= (umbral_gasa if d.clase == GASA else UMBRAL_DIBUJO)])
+        for d in visibles:
             color = ((80, 200, 80) if d.clase == GASA else
-                     (0, 165, 255) if d.clase == MANO else (180, 180, 0))
+                     (0, 165, 255) if d.clase == MANO else
+                     (255, 170, 0) if d.clase == PERSONA else (180, 180, 0))
             cv2.rectangle(lienzo, (int(d.x0), int(d.y0)), (int(d.x1), int(d.y1)), color, 2)
             cv2.putText(lienzo, f"{d.clase} {d.confianza:.2f}", (int(d.x0), int(d.y0) - 4),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1, cv2.LINE_AA)

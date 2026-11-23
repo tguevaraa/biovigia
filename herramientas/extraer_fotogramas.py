@@ -4,9 +4,10 @@
     python herramientas/extraer_fotogramas.py                     # datos/videos → datos/imagenes
     python herramientas/extraer_fotogramas.py --cada 10 --ancho 640
 
-Las imágenes salen normalizadas a 640 × 480, igual que las ve el servicio de visión, con
-nombres que conservan el video de origen (para partir 80/20 por video, no por imagen, y
-evitar que fotogramas casi idénticos queden a la vez en entrenamiento y validación).
+Las imágenes salen normalizadas a 640 × 480 con la misma función que usa el servicio de
+visión (sin deformar: un video 16:9 queda con bandas negras arriba y abajo), con nombres
+que conservan el video de origen (para partir 80/20 por video, no por imagen, y evitar
+que fotogramas casi idénticos queden a la vez en entrenamiento y validación).
 """
 from __future__ import annotations
 
@@ -14,8 +15,13 @@ import argparse
 import pathlib
 import sys
 
+RAIZ = pathlib.Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(RAIZ))
+
 try:
     import cv2
+
+    from vision.captura import normalizar
 except ImportError:
     sys.exit("Falta OpenCV: pip install -r requirements-vision.txt")
 
@@ -48,7 +54,7 @@ def main() -> int:
             if not ok:
                 break
             if indice % args.cada == 0:
-                cuadro = cv2.resize(cuadro, (args.ancho, args.alto), interpolation=cv2.INTER_AREA)
+                cuadro = normalizar(cuadro, args.ancho, args.alto)
                 destino = args.salida / f"{video.stem}_{indice:05d}.jpg"
                 cv2.imwrite(str(destino), cuadro, [cv2.IMWRITE_JPEG_QUALITY, 92])
                 guardadas += 1
@@ -57,7 +63,7 @@ def main() -> int:
         total += guardadas
         print(f"  {video.name:<22} {guardadas:>4} imágenes")
     print(f"✓ {total} imágenes en {args.salida}. Anótalas con las clases: gasa, "
-          "recipiente_rojo, recipiente_comun (formato YOLO).")
+          "recipiente_rojo, recipiente_comun y mano (formato YOLO).")
     return 0
 
 
