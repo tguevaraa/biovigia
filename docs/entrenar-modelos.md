@@ -417,6 +417,132 @@ tiene herramienta propia.
 | gasas-v0.3 | 0,616 (mezcla LVIS y reales) | 0,928 | 0 % | 0 de 57 (máx. 0,11) | v0.2 + 892 gasas reales de 14 clips, con un clic por clip. 60 épocas, 32 min. En los clips del cuarto: 0,006 |
 | gasas-v0.4 | 0,791 | 0,944 | 0 % | 29 de 57 (mediana 0,55) | v0.3 + 865 gasas de 10 clips del cuarto. En los 4 clips de validación del cuarto: 0,933. **Delante del torso: 0 de 73** |
 | **gasas-v0.5** | **0,824** ✓ OE2 | 0,942 | **0 %** | — | v0.4 + 531 gasas delante del cuerpo. **Validación del cuerpo (`gasas-cuerpo-val.yaml`): 0,944** (v0.4: 0,132). Cuarto: 0,955. Delante del torso: 50 de 73; al costado: 404 de 408. 60 épocas, 50 min |
+| jeringas-v0.1 (23/11/2026) | 0,484 (P 0,78 · R 0,45) | — | **0 %** (26 fotos de prueba, conf 0,25–0,50) | — | 618 jeringas de 12 clips propios (un clic por clip, `--alargamiento-max 0 --relleno-min 0.08 --area-max 0.15`) + 118 negativos. 60 épocas, ~5 min. Por clip de validación (conf 0,35): luz apagada 32 de 57, al tacho 4 de 12, **al piso 0 de 32**. Faltan en entrenamiento las tomas al tacho, al piso y otra persona (clips saltados) |
+| jeringas-v0.2 (23/11/2026) | 0,557 (P 0,93 · R 0,51), misma validación que v0.1 | — | 3,8 % a conf 0,35 (1 de 26); 0 % a 0,50 | — | v0.1 + 299 jeringas de 8 clips (tacho, delante del cuerpo, otra persona). Se descartaron 4 clips donde SAM siguió otra cosa (`04` y `24` al piso: tela y piso; `10` y `12`: la mano entera). Por clip (conf 0,35): luz apagada 51 de 57, al tacho 5 de 12, al piso 9 de 32. **Sigue débil con la jeringa chica (piso, lejos)** |
+| jeringas-v0.3 (23/11/2026) | 0,524 (P 0,93 · R 0,47) | — | **0 %** (conf 0,25–0,50) | — | v0.2 + 492 cajas de 4 clips nuevos (`datos/videos/jeringas-2`): dos jeringas sobre una hoja blanca en el piso, una en cada mano de lejos, sobre la mesa. Se descartó `jeringa2_03` (SAM encerró la hoja). Ojo: la hoja blanca puede enseñar «papel = jeringa»; faltan negativos con la hoja sola |
+
+**Ojo con la validación de jeringas (`jeringas-propias/val`).** Las etiquetas de
+`jeringa_14` encierran la mano, el brazo o la pierna (SAM siguió la mano, no la jeringa), y
+las de `jeringa_23` desde el fotograma 165 son el tacho. Por eso los mAP de la tabla
+(0,48 / 0,56 / 0,52) castigan al modelo cuando acierta. Con la validación limpia
+(`datos/externos/jeringas-val-limpia`: 57 fotos de `jeringa_18`, 5 de `jeringa_23` y 25
+negativos) da **v0.1 0,822 · v0.2 0,917 · v0.3 0,878**. Esa validación solo tiene la
+jeringa en la mano, cerca: **no mide el piso ni la distancia**. Para medir eso hay que
+grabar clips de validación aparte y revisar sus cajas una por una antes de usarlos.
+
+**Validación de piso y lejos (`datos/videos/jeringas-val`, nunca se entrena con ella).**
+4 clips con dos jeringas cada uno, cajas de SAM revisadas: en `jval_03` y `jval_04` falta a
+veces la caja de una de las dos jeringas, así que la precisión sale baja de más; lo que
+vale es el recall (cajas etiquetadas encontradas, IoU ≥ 0,3, conf 0,35):
+
+| Modelo | Piso, sobre hoja (`jval_01`) | Piso estampado, sin hoja (`jval_02`) | Lejos en la mano (`jval_03`) | Lejos en la mano (`jval_04`) | mAP@0,5 |
+|---|---|---|---|---|---|
+| jeringas-v0.1 | 0 % | 0 % | 20 % | 0 % | 0,007 |
+| jeringas-v0.2 | 1 % | 0 % | 27 % | 8 % | 0,047 |
+| jeringas-v0.3 | **100 %** | 2 % | 26 % | 25 % | 0,432 |
+| **jeringas-v0.4** | **100 %** | **90 %** | **31 %** | **29 %** | **0,638** |
+| jeringas-v0.5 | 100 % | **100 %** | 27 % | 21 % | 0,670 |
+| jeringas-v0.6 | 100 % | 63 % | 16 % | 31 % | 0,557 |
+
+jeringas-v0.4 (23/11/2026) = v0.3 + 206 cajas de 2 clips con dos jeringas quietas sobre el
+piso estampado **sin hoja** (`datos/videos/jeringas-3`). Validación limpia (en la mano):
+0,915 (v0.3: 0,878). Falsos positivos en el cuarto: 0 %. Ojo: `jval_02` se grabó en el
+mismo piso y la misma tarde que esos 2 clips, así que el 90 % puede ser optimista; hay que
+confirmarlo en otro lugar del piso o en el laboratorio.
+
+jeringas-v0.5 (23/11/2026) = v0.4 + 977 cajas de 15 clips (`datos/videos/jeringas-4`): las
+dos jeringas (tapa naranja y tapa blanca) a la vez en la mano, la blanca sola, de frente,
+sobre la mesa y en el piso. Se descartó `jeringa4_16` (SAM siguió la mano) y `jeringa4_08`
+(0,2 s). En vivo, v0.4 fallaba con las dos jeringas a la vez, con la blanca y parpadeaba.
+Validación nueva de **dos jeringas en la mano** (`datos/videos/jeringas-val-2`, 2 clips):
+
+| Modelo | Dos jeringas en la mano (recall) | mAP@0,5 | En la mano, cerca (validación limpia) | Falsos positivos |
+|---|---|---|---|---|
+| jeringas-v0.4 | 63 % | 0,666 | **0,915** (R 0,837) | 0 % |
+| jeringas-v0.5 | **94 %** | **0,903** | 0,873 (R 0,762) | 0 % |
+
+v0.5 mejora mucho con las dos jeringas y en el piso sin hoja, pero **empeora** con una
+jeringa en la mano de cerca (la validación limpia es casi toda `jeringa_18`, con poca luz)
+y de lejos (27 % y 21 % contra 31 % y 29 %). No es mejor en todo: hay que decidir cuál se
+usa o grabar más clips con poca luz y de lejos para la v0.6.
+
+jeringas-v0.6 (23/11/2026) = **los mismos datos que v0.5**, entrenados con
+`entrenar_modelo.py --giro 45` (giro al azar ±45° y volteo de arriba abajo; antes
+`degrees=0`). En vivo, v0.5 solo veía la jeringa vertical u horizontal. Validación girada
+nueva (`datos/externos/jeringas-val-girada`: las fotos con jeringa de la validación limpia y
+de `jeringas-val-2` giradas ±30° con borde negro; en `jval2_01` faltan algunas cajas, así que
+lo que vale es el recall):
+
+| Modelo | Girada: dos jeringas | Girada: en la mano | Girada mAP@0,5 | En la mano, cerca (limpia) | Dos jeringas derechas | Piso sin hoja | Falsos positivos (conf 0,35) |
+|---|---|---|---|---|---|---|---|
+| jeringas-v0.4 | 54 % | 60 % | 0,295 | 0,915 | 63 % | 90 % | 0 % |
+| jeringas-v0.5 | 74 % | 62 % | 0,375 | 0,873 | **94 %** | **100 %** | 0 % |
+| jeringas-v0.6 | **84 %** | **79 %** | **0,526** | **0,969** | 87 % | 63 % | 0 % (3,8 % a 0,25) |
+
+v0.6 ve mejor la jeringa inclinada y es la mejor en la mano de cerca, pero **pierde el piso
+sin hoja** (100 % → 63 %) y algo con las dos jeringas derechas. Ninguna versión es mejor en
+todo. De lejos (10–25 m) no hay arreglo con esta cámara: a 640 px la jeringa mide 2–5 px.
+En vivo, v0.5 también confundía la sombra de la jeringa con una jeringa.
+
+**Ojo con las pruebas en vivo de jeringas v0.1–v0.6 (hasta el 23/11/2026).**
+`probar_modelo.py` aplicaba a los modelos de `--objeto` el límite de área de la gasa
+(`--area-max-gasa 0.02`): borraba toda jeringa cuya caja pasara del 2 % de la imagen, es
+decir, la jeringa cerca de la cámara y la inclinada (su caja es más grande). El modelo sí la
+veía (v0.6: 0,65 de confianza en una captura donde «no la detectaba»). Parte de «parpadea»
+y «solo la ve vertical u horizontal» venía de ahí. Ya corregido: el límite solo se aplica al
+modelo de gasas. Las mediciones de esta sección no usan ese programa y no cambian.
+Con la corrección, la prueba en vivo de jeringas-v0.6 en el cuarto: **detecta bien**.
+Queda pendiente el piso sin hoja (63 % en `jval_02`), la sombra y la distancia (cámara).
+
+jeringas-v0.7 (23/11/2026) = v0.5 + 8 clips de la tanda 5 (`datos/videos/jeringas-5`: mesa,
+hoja y **piso sin hoja**; se descartaron `jeringa5_08` y `_09`, SAM siguió la mano) + 169
+negativos nuevos del cuarto (`jeringas-negativos-2`), con `--giro 20 --sin-volteo` y 100
+épocas. Recall por prueba (conf 0,35, IoU ≥ 0,3):
+
+| Modelo | En la mano (limpia) | Piso sin hoja (`jval_02`) | Lejos (`jval_03` / `_04`) | Dos jeringas | Girada 30° | Falsos positivos |
+|---|---|---|---|---|---|---|
+| jeringas-v0.6 | 89 % (mAP 0,969) | 63 % | 16 % / 31 % | 87 % | **83 %** | 0 % |
+| jeringas-v0.7 | 74 % (mAP 0,862) | **100 %** | 14 % / 25 % | 85 % | 62 % | 0 % |
+| **v0.6 + v0.7 juntos** | **94 %** | **100 %** | **25 % / 42 %** | **93 %** | 81 % | 0 % |
+
+v0.7 recupera el piso pero pierde la jeringa inclinada y en la mano. **Juntos** (los dos
+modelos sobre la misma imagen y las cajas unidas con NMS 0,5) son lo mejor en casi todo.
+Cuesta el doble de cómputo (cada uno 6,57 GFLOPs a 640 px). Para probarlo:
+`probar_modelo.py --objeto vision/modelos/biovigia-jeringas-v0.6.pt --objeto vision/modelos/biovigia-jeringas-v0.7.pt`
+(con varios `--objeto`, `probar_modelo.py` quita las cajas repetidas).
+
+En vivo, v0.6 + v0.7 solo veían la jeringa **muy recta**: la prueba «girada 30°» gira la
+foto en el plano, pero la jeringa real también se inclina hacia la cámara o se ve de punta.
+jeringas-v0.8 (24/11/2026) = v0.7 + tanda 6 de **ángulos** (`grabar_clips.py --tomas
+angulos`, `datos/videos/jeringas-6`): 14 clips, 2 para medir (`jeringa6_11` diagonal,
+`_12` inclinada hacia la cámara). SAM siguió la mano, el trapo o el ropero en varios: se
+remarcaron con `--solo` (pide el clic de nuevo), se apartaron `02` y `05`, y en los clips
+con dos jeringas solo quedan las fotos con las dos marcadas (323 fotos nuevas). Con
+`--giro 45 --sin-volteo` y 100 épocas. Misma prueba que arriba más **ángulos reales**:
+
+| Modelo | En la mano | Piso sin hoja | Lejos (`_03` / `_04`) | Dos jeringas | Girada 30° | **Ángulos reales** | Falsos positivos |
+|---|---|---|---|---|---|---|---|
+| jeringas-v0.6 | 89 % | 63 % | 16 % / 31 % | 87 % | 83 % | 38 % | 0 / 52 |
+| jeringas-v0.7 | 74 % | 100 % | 14 % / 25 % | 85 % | 62 % | 37 % | 0 / 52 |
+| v0.6 + v0.7 juntos | 94 % | 100 % | 25 % / 42 % | 93 % | 81 % | 45 % | 0 / 52 |
+| **jeringas-v0.8** | **94 %** | **100 %** | **40 % / 63 %** | 84 % | **85 %** | **75 %** | 1 / 52 |
+| v0.6 + v0.8 juntos | 95 % | 100 % | 42 % / 76 % | 93 % | 90 % | 76 % | — |
+
+v0.8 sola iguala o supera a v0.6 + v0.7 juntos en todo salvo dos jeringas (84 % contra
+93 %) y con la mitad de cómputo: **es la que se usa**. Inclinada hacia la cámara (`_12`)
+sigue siendo lo más difícil: 51 % (antes 14 %); de punta la jeringa casi no tiene forma.
+Su mAP propio (0,655) no se compara con los anteriores: su validación incluye los clips de
+ángulos. Ojo: los clips para medir son de la misma sesión que los de entrenamiento.
+
+**v0.8 en vivo (24/11/2026): detecta bien**, también en diagonal e inclinada, con un solo
+modelo: `probar_modelo.py --objeto vision/modelos/biovigia-jeringas-v0.8.pt`.
+
+v0.3 es el mejor para el uso real (en la mano de cerca baja un poco: 0,878 contra 0,917
+de v0.2). **Sobre el piso estampado sin hoja no ve la jeringa** (aprendió el papel blanco
+como parte del contexto) y **de lejos encuentra 1 de cada 4**: la jeringa lejos mide pocos
+píxeles a 640 px de entrada. Lo siguiente: clips de entrenamiento con la jeringa quieta
+sobre el piso **sin hoja** (SAM sí la sigue ahí, ver `jval_02`), negativos con la hoja sola,
+y probar `--imgsz` mayor o los recortes alrededor de personas (choca con RNF-11).
 
 Sobre gasas-v0.3 y v0.4: `rojo_08` es de la misma sesión que los clips cenitales de
 entrenamiento, y los 4 clips de validación del cuarto (`gasas-cuarto-val.yaml`: lejos, al

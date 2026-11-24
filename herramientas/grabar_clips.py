@@ -64,7 +64,22 @@ TOMAS_OBJETO = [
     "Otra persona sostiene el objeto",
     "Dos objetos a la vez, en las dos manos",
 ]
-LISTAS = {"general": TOMAS, "cuerpo": TOMAS_CUERPO, "objeto": TOMAS_OBJETO}
+# Ángulos: jeringas-v0.6/v0.7 solo reconocían la jeringa recta en vivo. Faltaban diagonales
+# e inclinaciones hacia la cámara (la jeringa se ve más corta o de punta).
+TOMAS_ANGULOS = [
+    "En la mano: girar el objeto despacio como agujas del reloj (diagonales)",
+    "En la mano: inclinarlo hacia la camara y hacia atras despacio",
+    "En la mano: apuntarlo de punta a la camara y volver",
+    "En la mano, lejos: diagonales e inclinado",
+    "En el piso: en diagonal, girarlo con el pie o la mano",
+    "En el piso: apoyado en algo, inclinado hacia la camara",
+    "Dos objetos a la vez, cada uno en un angulo distinto",
+    "Otro objeto (la otra jeringa): diagonales e inclinado en la mano",
+    "Delante del pecho: en diagonal e inclinado",
+    "Moverlo rapido en angulos al azar, cerca de la camara",
+]
+LISTAS = {"general": TOMAS, "cuerpo": TOMAS_CUERPO, "objeto": TOMAS_OBJETO,
+          "angulos": TOMAS_ANGULOS}
 
 
 def main() -> int:

@@ -43,7 +43,7 @@ for _flujo in (sys.stdout, sys.stderr):
 VENTANA = "Clic sobre el objeto - Enter sigue, r borra, s salta, Esc termina"
 
 
-def elegir_clic(ruta: pathlib.Path, cv2) -> tuple[int, list[list[int]]] | None | str:
+def elegir_clic(ruta: pathlib.Path, cv2, clase: str = "gasa") -> tuple[int, list[list[int]]] | None | str:
     """Ventana con barra de fotogramas. Devuelve (fotograma, puntos), None si se salta, o
     "salir"."""
     cap = cv2.VideoCapture(str(ruta))
@@ -81,9 +81,9 @@ def elegir_clic(ruta: pathlib.Path, cv2) -> tuple[int, list[list[int]]] | None |
                                 0.6, (0, 255, 255), 2)
                 cv2.putText(vista, f"{ruta.name}  fotograma {estado['i']}/{total - 1}", (15, 35),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 255), 2)
-                ayuda = (f"{len(estado['puntos'])} gasa(s) en ESTE fotograma - Enter confirma "
+                ayuda = (f"{len(estado['puntos'])} {clase}(s) en ESTE fotograma - Enter confirma "
                          "(mover la barra borra los clics)"
-                         if estado["puntos"] else "Elige UN fotograma y haz un clic por cada gasa que se vea")
+                         if estado["puntos"] else f"Elige UN fotograma y haz un clic por cada {clase} que se vea")
                 cv2.putText(vista, ayuda, (15, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
                 cv2.imshow(VENTANA, vista)
             tecla = cv2.waitKey(30) & 0xFF
@@ -145,7 +145,9 @@ def caja_de_mascara(m, h, w, args, cv2, np):
     x, y, bw, bh, area = stats[k]
     if bw * bh > args.area_max * h * w or area < args.relleno_min * bw * bh or area < 30:
         return None
-    if max(bw / bh, bh / bw) >= 3:      # una tira (el borde de un tacho), no una gasa
+    # Una tira suele ser el borde de un tacho, no una gasa. Para objetos alargados (jeringa)
+    # se sube o se apaga con --alargamiento-max 0.
+    if args.alargamiento_max and max(bw / bh, bh / bw) >= args.alargamiento_max:
         return None
     return float(x), float(y), float(x + bw), float(y + bh)
 
@@ -214,11 +216,13 @@ def main() -> int:
                     help="Caja máxima, en fracción de la imagen")
     ap.add_argument("--relleno-min", type=float, default=0.3,
                     help="Fracción mínima de la caja que debe cubrir la máscara")
+    ap.add_argument("--alargamiento-max", type=float, default=3,
+                    help="Descarta cajas así de alargadas (largo/ancho); 0 = no filtrar (jeringas)")
     ap.add_argument("--cambio-max", type=float, default=2.5,
                     help="Cuántas veces puede crecer o achicarse la caja respecto del clic")
     ap.add_argument("--sam", default="sam2.1_b.pt", help="Pesos de SAM 2 (se descargan solos)")
     ap.add_argument("--repetir", action="store_true", help="No pedir clics: usar clics.json")
-    ap.add_argument("--solo", nargs="*", help="Procesar solo estos clips (sin extensión)")
+    ap.add_argument("--solo", nargs="*", help="Procesar solo estos clips (sin extensión); pide el clic de nuevo salvo con --repetir")
     args = ap.parse_args()
 
     import cv2
@@ -233,9 +237,10 @@ def main() -> int:
 
     if not args.repetir:
         for v in videos:
-            if v.stem in clics:
+            # Con --solo se vuelve a pedir el clic: es para rehacer clips mal marcados.
+            if v.stem in clics and not args.solo:
                 continue
-            r = elegir_clic(v, cv2)
+            r = elegir_clic(v, cv2, args.clase)
             if r == "salir":
                 break
             clics[v.stem] = None if r is None else {"fotograma": r[0], "puntos": r[1]}

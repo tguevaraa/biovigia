@@ -43,6 +43,14 @@ COLORES = {"recipiente": (60, 60, 255), "persona": (255, 170, 0), "gasa": (255, 
 VENTANA = "BioVigIA - prueba del modelo"
 
 
+def _iou(a, b) -> float:
+    ix = max(0.0, min(a.x1, b.x1) - max(a.x0, b.x0))
+    iy = max(0.0, min(a.y1, b.y1) - max(a.y0, b.y0))
+    inter = ix * iy
+    union = (a.x1 - a.x0) * (a.y1 - a.y0) + (b.x1 - b.x0) * (b.y1 - b.y0) - inter
+    return inter / union if union else 0.0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -66,7 +74,8 @@ def main() -> int:
     ap.add_argument("--con-recortes", action="store_true",
                     help="Busca las gasas también en recortes alrededor de personas y tachos (etapa 2)")
     ap.add_argument("--area-max-gasa", type=float, default=0.02,
-                    help="Descarta «gasas» más grandes que esta fracción de la imagen "
+                    help="Descarta «gasas» más grandes que esta fracción de la imagen; no se "
+                         "aplica a los modelos de --objeto "
                          "(el modelo actual suele encuadrar la mano entera)")
     ap.add_argument("--sin-estabilizar", action="store_true",
                     help="Dibuja lo que da el modelo en cada fotograma (parpadea)")
@@ -89,6 +98,10 @@ def main() -> int:
         else:
             print(f"✗ No existe {ruta}; se sigue sin él")
     clases_objeto = {n for m in objetos for n in m.names.values()}
+    # El límite de área es para la gasa (su modelo encuadraba la mano entera). Una jeringa
+    # cerca de la cámara ocupa más del 2 % y el límite la borraba.
+    clases_con_limite = ({n for n in objetos[0].names.values()}
+                         if objetos and str(args.modelo_gasas) and args.modelo_gasas.exists() else set())
     estabilizador = None if args.sin_estabilizar else Estabilizador(
         umbral_alta=args.confianza, umbral_baja=min(0.15, args.confianza))
     fuente = crear_fuente(args.fuente, 640, 480, 30)
@@ -122,7 +135,15 @@ def main() -> int:
                         halladas += [Deteccion(rg.names[int(k)], c, *xyxy) for xyxy, c, k in
                                      zip(rg.boxes.xyxy.tolist(), rg.boxes.conf.tolist(),
                                          rg.boxes.cls.tolist())]
-                    return halladas
+                    if len(objetos) == 1:
+                        return halladas
+                    # Varios modelos del mismo objeto (p. ej. jeringas v0.6 + v0.7): se queda
+                    # la caja más segura de cada grupo que se solapa, como un NMS a 0,5.
+                    unicas = []
+                    for d in sorted(halladas, key=lambda d: -d.confianza):
+                        if all(u.clase != d.clase or _iou(u, d) < 0.5 for u in unicas):
+                            unicas.append(d)
+                    return unicas
 
                 encontradas = detectar_gasas(imagen)
                 if args.con_recortes:
@@ -135,8 +156,8 @@ def main() -> int:
                         cv2.rectangle(imagen, (x0, y0), (x1, y1), (120, 120, 120), 1)
                     encontradas = buscar_en_recortes(imagen, guias, detectar_gasas) + encontradas
                 limite = args.area_max_gasa * imagen.shape[0] * imagen.shape[1]
-                detecciones += [d for d in encontradas
-                                if (d.x1 - d.x0) * (d.y1 - d.y0) <= limite]
+                detecciones += [d for d in encontradas if d.clase not in clases_con_limite
+                                or (d.x1 - d.x0) * (d.y1 - d.y0) <= limite]
             if estabilizador is None:
                 dibujar = [(d, False) for d in detecciones]
             else:
