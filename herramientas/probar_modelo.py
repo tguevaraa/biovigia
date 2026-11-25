@@ -47,9 +47,9 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--modelo", type=pathlib.Path,
-                    default=RAIZ / "vision" / "modelos" / "biovigia-tachos-v0.2.pt")
+                    default=RAIZ / "vision" / "modelos" / "biovigia-tachos-v0.4.pt")
     ap.add_argument("--modelo-gasas", type=pathlib.Path,
-                    default=RAIZ / "vision" / "modelos" / "biovigia-gasas-v0.5.pt",
+                    default=RAIZ / "vision" / "modelos" / "biovigia-gasas-v0.6.pt",
                     help="Modelo de gasas (si existe se usa también)")
     ap.add_argument("--objeto", type=pathlib.Path, action="append", default=[],
                     help="Otro modelo de un objeto chico (jeringas, curitas…); se puede repetir. "
@@ -72,18 +72,29 @@ def main() -> int:
                     help="Dibuja lo que da el modelo en cada fotograma (parpadea)")
     ap.add_argument("--imgsz", type=int, default=640)
     ap.add_argument("--ancho-ventana", type=int, default=1280)
+    ap.add_argument("--sin-tachos", action="store_true",
+                    help="No carga el modelo de tachos (para probar solo un objeto)")
+    ap.add_argument("--sin-gasas", action="store_true",
+                    help="No carga el modelo de gasas (para probar solo el modelo de --objeto)")
+    ap.add_argument("--sin-personas", action="store_true",
+                    help="No carga el YOLO de COCO (las «personas» falsas en objetos del cuarto "
+                         "vienen de ese modelo, no del de tubos)")
+    ap.add_argument("--captura", default="1920x1080",
+                    help="Resolución que se le pide a la cámara (ancho x alto; 0x0 = la que dé). "
+                         "Sin pedirla, Iriun por DirectShow entrega 640 × 480, más borrosa que los "
+                         "clips de entrenamiento (grabar_clips.py graba a 1920 × 1080)")
     args = ap.parse_args()
 
-    if not args.modelo.exists():
+    if not args.sin_tachos and not args.modelo.exists():
         print(f"✗ No existe {args.modelo}")
         return 1
-    modelo = YOLO(str(args.modelo))
+    modelo = None if args.sin_tachos else YOLO(str(args.modelo))
     personas = None
-    if str(args.modelo_personas) and args.modelo_personas.exists():
+    if not args.sin_personas and args.modelo_personas.is_file():
         personas = YOLO(str(args.modelo_personas))
     # Objetos chicos que se mueven con la mano: la gasa y los que agregue el equipo.
     objetos = []
-    for ruta in ([args.modelo_gasas] if str(args.modelo_gasas) else []) + args.objeto:
+    for ruta in ([] if args.sin_gasas else [args.modelo_gasas]) + args.objeto:
         if ruta.exists():
             objetos.append(YOLO(str(ruta)))
         else:
@@ -91,7 +102,8 @@ def main() -> int:
     clases_objeto = {n for m in objetos for n in m.names.values()}
     estabilizador = None if args.sin_estabilizar else Estabilizador(
         umbral_alta=args.confianza, umbral_baja=min(0.15, args.confianza))
-    fuente = crear_fuente(args.fuente, 640, 480, 30)
+    captura_ancho, captura_alto = (int(x) for x in args.captura.lower().split("x"))
+    fuente = crear_fuente(args.fuente, 640, 480, 30, captura_ancho, captura_alto)
     previo, fps = time.monotonic(), 0.0
     try:
         while True:
@@ -105,10 +117,11 @@ def main() -> int:
             # conocidos se mantienen con ella, los nuevos necesitan --confianza.
             minima = args.confianza if estabilizador is None else estabilizador.umbral_baja
             detecciones = []
-            r = modelo.predict(imagen, conf=minima, imgsz=args.imgsz, verbose=False)[0]
-            detecciones += [Deteccion(r.names[int(k)], c, *xyxy) for xyxy, c, k in
-                            zip(r.boxes.xyxy.tolist(), r.boxes.conf.tolist(),
-                                r.boxes.cls.tolist())]
+            if modelo is not None:
+                r = modelo.predict(imagen, conf=minima, imgsz=args.imgsz, verbose=False)[0]
+                detecciones += [Deteccion(r.names[int(k)], c, *xyxy) for xyxy, c, k in
+                                zip(r.boxes.xyxy.tolist(), r.boxes.conf.tolist(),
+                                    r.boxes.cls.tolist())]
             if personas is not None:  # COCO: la clase 0 es «person»
                 rp = personas.predict(imagen, conf=minima, imgsz=args.imgsz,
                                       classes=[0], verbose=False)[0]

@@ -59,6 +59,83 @@ class MotorTests(unittest.TestCase):
         self.assertGreaterEqual(rasgos["fotogramas_confirmacion"], 3)
         self.assertEqual(rasgos["motivo"], "desaparicion")
 
+    def test_el_evento_dice_que_objeto_fue(self):
+        e = Escenario()
+        for i in range(14):   # un tubo que cae al rojo (otro modelo de una clase)
+            y = 40 + 240 * min(i, 9) / 9
+            d = gasa(180, y)
+            e.cuadro(Deteccion("tubo", d.confianza, d.x0, d.y0, d.x1, d.y1))
+        e.vacio(2.0)
+        self.assertEqual([c.zona for c in e.eventos], ["rojo"])
+        self.assertEqual(e.eventos[0].rasgos["objeto"], "tubo")
+
+    def test_otro_modelo_toma_el_objeto_en_la_boca(self):
+        # El modelo de tubos lo pierde al bajar y el de jeringas lo toma enseguida: una
+        # sola pista, un solo evento, y el objeto es el más visto (tubo).
+        e = Escenario(k_confirmacion=1)
+        for i in range(12):
+            d = gasa(460, 40 + 15 * i)
+            e.cuadro(Deteccion("tubo", 0.8, d.x0, d.y0, d.x1, d.y1))
+        e.cuadro()
+        e.cuadro()  # dos cuadros sin nada (≈0,13 s)
+        for i in range(6):
+            d = gasa(462, 230 + 10 * i)
+            e.cuadro(Deteccion("jeringa", 0.7, d.x0, d.y0, d.x1, d.y1))
+        e.vacio(2.0)
+        self.assertEqual([c.zona for c in e.eventos], ["comun"])
+        self.assertEqual(e.eventos[0].rasgos["objeto"], "tubo")
+
+    def test_otra_clase_lejos_no_se_une(self):
+        e = Escenario()
+        e.trayecto((460, 40), (460, 200), 8)
+        d = gasa(200, 200)  # «jeringa» falsa en la otra punta, enseguida
+        e.cuadro(Deteccion("jeringa", 0.7, d.x0, d.y0, d.x1, d.y1))
+        self.assertEqual(len(e.motor.historiales), 2)
+
+    def test_un_salto_suelto_al_tacho_vecino_no_cambia_el_recipiente(self):
+        from vision.reglas import Historial, Observacion, ReglaKdeN
+        h = Historial(1)
+        zonas = [None, None, "comun", "comun", "comun", "comun", "rojo"]
+        for i, z in enumerate(zonas):
+            h.observaciones.append(Observacion(i / FPS, INICIO, z, 0.5, 100, (350, 270)))
+        p = ParametrosReglas(k_confirmacion=1, n_confirmacion=5)
+        self.assertEqual(ReglaKdeN().decidir(h, p, "desaparicion").zona, "comun")
+        # Empate: gana el más reciente.
+        h2 = Historial(2)
+        for i, z in enumerate(["comun", "comun", "rojo", "rojo"]):
+            h2.observaciones.append(Observacion(i / FPS, INICIO, z, 0.5, 100, (350, 270)))
+        self.assertEqual(ReglaKdeN().decidir(h2, p, "desaparicion").zona, "rojo")
+
+    def test_cae_y_desaparece_justo_encima_del_tacho(self):
+        # El tubo se pierde antes de la boca: venía bajando sobre el rojo → cayó en el rojo.
+        e = Escenario(k_confirmacion=1)
+        for i in range(10):                      # la zona del rojo empieza en y=216
+            d = gasa(180, 40 + 160 * i / 9)
+            e.cuadro(Deteccion("tubo", 0.8, d.x0, d.y0, d.x1, d.y1))
+        e.vacio(2.0)
+        self.assertEqual([c.zona for c in e.eventos], ["rojo"])
+        self.assertEqual(e.eventos[0].rasgos["regla"], "caida-proyectada")
+
+    def test_la_caida_proyectada_es_solo_para_tubos(self):
+        e = Escenario(k_confirmacion=1)
+        e.trayecto((180, 40), (180, 200), 10)   # una gasa (o jeringa) que se pierde ahí
+        e.vacio(2.0)
+        self.assertEqual(e.eventos, [])
+
+    def test_sostenido_encima_del_tacho_y_tapado_no_cuenta(self):
+        e = Escenario(k_confirmacion=1, clases_caida=("gasa",))
+        e.trayecto((300, 60), (180, 200), 8)
+        for _ in range(10):                      # quieto en el aire, después la mano lo tapa
+            e.cuadro(gasa(180, 200))
+        e.vacio(2.0)
+        self.assertEqual(e.eventos, [])
+
+    def test_desaparece_muy_arriba_del_tacho_no_cuenta(self):
+        e = Escenario(k_confirmacion=1, clases_caida=("gasa",))
+        e.trayecto((180, 20), (180, 120), 8)    # se pierde lejos de la boca
+        e.vacio(2.0)
+        self.assertEqual(e.eventos, [])
+
     def test_descarte_en_el_comun_fecha_la_ultima_observacion(self):
         e = Escenario()
         e.trayecto((460, 40), (460, 250), 8)

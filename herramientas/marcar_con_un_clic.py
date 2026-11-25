@@ -145,7 +145,7 @@ def caja_de_mascara(m, h, w, args, cv2, np):
     x, y, bw, bh, area = stats[k]
     if bw * bh > args.area_max * h * w or area < args.relleno_min * bw * bh or area < 30:
         return None
-    if max(bw / bh, bh / bw) >= 3:      # una tira (el borde de un tacho), no una gasa
+    if max(bw / bh, bh / bw) >= args.aspecto_max:   # una tira (el borde de un tacho), no una gasa
         return None
     return float(x), float(y), float(x + bw), float(y + bh)
 
@@ -214,6 +214,9 @@ def main() -> int:
                     help="Caja máxima, en fracción de la imagen")
     ap.add_argument("--relleno-min", type=float, default=0.3,
                     help="Fracción mínima de la caja que debe cubrir la máscara")
+    ap.add_argument("--aspecto-max", type=float, default=3.0,
+                    help="Proporción largo/ancho máxima de la caja: más alargada se toma como una "
+                         "tira (el borde de un tacho). Para objetos largos (tubos, jeringas) usar 10")
     ap.add_argument("--cambio-max", type=float, default=2.5,
                     help="Cuántas veces puede crecer o achicarse la caja respecto del clic")
     ap.add_argument("--sam", default="sam2.1_b.pt", help="Pesos de SAM 2 (se descargan solos)")

@@ -125,7 +125,10 @@ El sistema usa tres detectores YOLO a la vez, cada uno con una sola tarea:
 | `biovigia-gasas-v0.2.pt` | `gasa` | Lo mismo que v0.1, más fotos del cuarto **sin gasas** como negativos | Sin falsos positivos en el cuarto, pero **tampoco reconoce gasas reales** |
 | `biovigia-gasas-v0.3.pt` | `gasa` | v0.2 + ~900 gasas reales de los clips propios, marcadas con un clic por clip ([sección 5](#5-gasas-reales-con-un-clic-por-clip)) | Reconoce las gasas de los clips grabados desde arriba (0,93), pero no las del cuarto (0,006) |
 | `biovigia-gasas-v0.4.pt` | `gasa` | v0.3 + 865 gasas del cuarto (10 clips grabados con `grabar_clips.py`, un clic por clip) | Reconoce la gasa en el cuarto (0,93) y en los clips cenitales (0,94), pero no delante del cuerpo (0 de 73) |
-| `biovigia-gasas-v0.5.pt` | `gasa` | v0.4 + 531 gasas **delante del cuerpo** (12 clips con `grabar_clips.py --tomas cuerpo`, dos camisetas) | **El que usa la demostración.** Delante del cuerpo 0,94; en el cuarto 0,96; sin falsos positivos; ver la [sección 7](#7-resultados-hasta-hoy) |
+| `biovigia-gasas-v0.5.pt` | `gasa` | v0.4 + 531 gasas **delante del cuerpo** (12 clips con `grabar_clips.py --tomas cuerpo`, dos camisetas) | Delante del cuerpo 0,94; en el cuarto 0,96. Marcaba como gasa el puño que agarra un tubo (42 % de los fotogramas de tubos) |
+| `biovigia-gasas-v0.6.pt` | `gasa` | v0.5 + 2.925 fotogramas de los clips de **tubos** como negativos (puños, tubo, piso) | **El que usa la demostración.** 0 % de falsos sobre tubos y puños; delante del cuerpo 98 %; ver la [sección 7](#7-resultados-hasta-hoy) |
+| `biovigia-tubos-v0.10.pt` | `tubo` | Tubos propios (derecho, de cabeza, piso, agarres) + gasas de canto como negativos | Sin falsos sobre gasas, pero en el montaje de la demostración (tubo chico, junto a los tachos) solo lo ve en el 3 % de los fotogramas |
+| `biovigia-tubos-v0.11.pt` | `tubo` | v0.10 + 237 fotogramas del **montaje** (`grabar_clips.py --tomas tubo-montaje`, ×3) + 600 negativos de los clips de gasa y jeringa del mismo montaje | **El que usa la demostración.** Montaje 91 % (v0.10: 3 %); ver la [sección 7](#7-resultados-hasta-hoy) |
 | `yolo11n-coco.pt` | `persona` | El YOLO original de COCO, sin reentrenar | Funciona bien; no hace falta entrenarlo |
 
 Los pesos (`.pt`) **no van a git** (`vision/modelos/*.pt` está en `.gitignore`). Para
@@ -416,7 +419,9 @@ tiene herramienta propia.
 | gasas-v0.2 | 0,413 (en la validación de v0.1) | 0,133 | 0 % | 0 de 57 | v0.1 + 249 negativos: 120 fotos del cuarto y 129 de los clips vacíos. 60 épocas, 25 min |
 | gasas-v0.3 | 0,616 (mezcla LVIS y reales) | 0,928 | 0 % | 0 de 57 (máx. 0,11) | v0.2 + 892 gasas reales de 14 clips, con un clic por clip. 60 épocas, 32 min. En los clips del cuarto: 0,006 |
 | gasas-v0.4 | 0,791 | 0,944 | 0 % | 29 de 57 (mediana 0,55) | v0.3 + 865 gasas de 10 clips del cuarto. En los 4 clips de validación del cuarto: 0,933. **Delante del torso: 0 de 73** |
-| **gasas-v0.5** | **0,824** ✓ OE2 | 0,942 | **0 %** | — | v0.4 + 531 gasas delante del cuerpo. **Validación del cuerpo (`gasas-cuerpo-val.yaml`): 0,944** (v0.4: 0,132). Cuarto: 0,955. Delante del torso: 50 de 73; al costado: 404 de 408. 60 épocas, 50 min |
+| gasas-v0.5 | **0,824** ✓ OE2 | 0,942 | **0 %** | — | v0.4 + 531 gasas delante del cuerpo. **Validación del cuerpo (`gasas-cuerpo-val.yaml`): 0,944** (v0.4: 0,132). Cuarto: 0,955. Delante del torso: 50 de 73; al costado: 404 de 408. 60 épocas, 50 min |
+| **gasas-v0.6** | **0,835** ✓ OE2 (en la validación de v0.5) | — | **0 %** | — | v0.5 + 2.925 negativos de los clips de tubos (800 normales, 800 agarres, 800 piso, 525 lanzamientos). Falsos sobre tubos y puños (617 fotos de validación): **0 %** (v0.5: 42 %). Gasa en el cuarto 96 %, delante del cuerpo 98 % (v0.5: 92 %). 60 épocas, 72 min |
+| **tubos-v0.11** | 0,588 (validación nueva, con el montaje y 754 negativos) | — | **0 %** | — | A conf 0,35, v0.10 → v0.11: tubo en el montaje (`tubo4_02`, no visto) 3 % → **91 %**; derecho 73 → 75 %; de cabeza 66 → 76 %; quemado 55 → 59 %; dedos en las puntas 65 → 74 %; tapa en el puño 100 → 97 %. Falsos: cuarto y gente 0 %, gasa de canto 0 %, 249 fotos de los primeros clips de prueba 0 %. Parte de v0.10, 40 épocas, ~55 min |
 
 Sobre gasas-v0.3 y v0.4: `rojo_08` es de la misma sesión que los clips cenitales de
 entrenamiento, y los 4 clips de validación del cuarto (`gasas-cuarto-val.yaml`: lejos, al

@@ -64,7 +64,97 @@ TOMAS_OBJETO = [
     "Otra persona sostiene el objeto",
     "Dos objetos a la vez, en las dos manos",
 ]
-LISTAS = {"general": TOMAS, "cuerpo": TOMAS_CUERPO, "objeto": TOMAS_OBJETO}
+# Tubos de muestra: son transparentes, así que lo que más se ve es la tapa de color. Conviene
+# que aparezcan tapas de varios colores (con un solo color, el modelo aprende "tapa morada"),
+# el tubo agarrado de distintas formas y tubos en la gradilla.
+TOMAS_TUBO = [
+    "Tubo MORADO en la mano, cerca de la camara, girandolo",
+    "Tubo AMARILLO en la mano, cerca de la camara, girandolo",
+    "Tubo MORADO en la mano, lejos (otro lado de la sala)",
+    "Tubo AMARILLO en la mano, lejos (otro lado de la sala)",
+    "Llevar el tubo MORADO al tacho y soltarlo adentro",
+    "Llevar el tubo AMARILLO al tacho y soltarlo adentro",
+    "Tirar el tubo MORADO al piso",
+    "Tirar el tubo AMARILLO al piso",
+    "MORADO en una mano y AMARILLO en la otra, moviendolos",
+    "Agarrar cada tubo por la tapa, colgando (primero MORADO, luego AMARILLO)",
+    "Los dos tubos parados en un vaso, alguien pasa cerca",
+    "Los dos tubos acostados en la mesa",
+    "Tubo MORADO delante del pecho, de frente a la camara",
+    "Tubo AMARILLO delante del pecho, de frente a la camara",
+    "Luz apagada (o solo una lampara): un tubo en cada mano",
+    "Otra persona sostiene los dos tubos",
+]
+# Segunda ronda de tubos: la v0.3 veía el tubo cayendo o en el piso solo en el 68 % de los
+# fotogramas (al caer es chico y borroso). Estas tomas son solo de eso.
+TOMAS_TUBO_PISO = [
+    "Tirar el tubo MORADO al piso, cerca de la cama",
+    "Tirar el tubo AMARILLO al piso, cerca de la cama",
+    "Tirar el tubo MORADO al piso, cerca del escritorio",
+    "Tirar el tubo AMARILLO al piso, cerca del escritorio",
+    "Tubo MORADO quieto en el piso, acostado, 5 s (luego moverlo a otro sitio)",
+    "Tubo AMARILLO quieto en el piso, acostado, 5 s (luego moverlo a otro sitio)",
+    "Tirar los DOS tubos al piso a la vez y dejarlos ahi",
+    "Recoger los dos tubos del piso y volver a tirarlos",
+]
+# Tercera ronda: agarres que tapan parte del tubo. La v0.6 lo perdía sostenido con un dedo
+# en cada punta (la tapa de color, que es lo que más mira el modelo, queda tapada).
+TOMAS_TUBO_AGARRES = [
+    "Tubo MORADO con un dedo en cada punta (tapa tapada), moviendolo",
+    "Tubo AMARILLO con un dedo en cada punta (tapa tapada), moviendolo",
+    "Tubo MORADO con la tapa dentro del puño, solo se ve el cuerpo",
+    "Tubo AMARILLO con la tapa dentro del puño, solo se ve el cuerpo",
+    "Tubo entre dos dedos, como un cigarrillo (MORADO y luego AMARILLO)",
+    "Tubo MORADO de cabeza (tapa abajo), caminando hacia el tacho",
+    "Tubo AMARILLO de cabeza (tapa abajo), caminando hacia el tacho",
+    "Cerca de una lampara o ventana (mucha luz): un tubo en cada mano",
+]
+# Negativas para el modelo de tubos: la v0.9 tomaba por tubo una gasa girando de canto (se ve
+# como una tira blanca alargada). Sin ningún tubo a la vista.
+TOMAS_TUBO_NO = [
+    "SIN TUBOS: gasa girando de canto, cerca de la camara",
+    "SIN TUBOS: gasa enrollada como un tubito, en la mano, girandola",
+    "SIN TUBOS: gasa doblada en tira larga, moviendola",
+    "SIN TUBOS: gasa de canto, lejos (otro lado de la sala)",
+    "SIN TUBOS: llevar la gasa enrollada al tacho y soltarla",
+    "SIN TUBOS: lapicero, marcador o cepillo de dientes en la mano, girandolo",
+]
+# Tachos propios: tachos-v0.2 (solo fotos de internet) no veía un tacho rojo cilíndrico liso.
+# En cada toma tienen que verse LOS DOS tachos enteros al empezar (ahí se hace el clic).
+TOMAS_TACHOS = [
+    "Los DOS tachos quietos, nadie en la escena, 10 s",
+    "Mover los tachos a otro sitio del piso (que se vean los dos al empezar)",
+    "Tachos juntos, uno al lado del otro; luego separarlos",
+    "Pasar caminando por delante de los tachos, tapandolos a medias",
+    "Echar cosas al tacho ROJO y luego al COMUN",
+    "Agacharse junto a los tachos, la mano encima de la boca",
+    "Luz apagada (o solo una lampara): los dos tachos quietos",
+    "Tachos cerca de la cama o del escritorio, con cosas alrededor",
+    "Cambiar el tacho ROJO de lugar varias veces durante la toma",
+    "Tachos lejos de la camara (al fondo del cuarto)",
+]
+# Prueba del servicio completo: con la cámara donde la usa el servicio, para medir qué tan
+# seguido ve cada objeto (gasa, jeringa) desde la mano hasta el tacho.
+TOMAS_PRUEBA = [
+    "GASA: mostrarla cerca de la camara 3 s, caminar y tirarla al tacho ROJO",
+    "JERINGA: mostrarla cerca de la camara 3 s, caminar y tirarla al tacho ROJO",
+    "GASA: tirarla al tacho COMUN",
+    "JERINGA: tirarla al tacho COMUN",
+]
+# Tubos con el montaje de la demostración (cámara a ~2 m, tachos abajo): la v0.10 casi no los
+# veía junto a los tachos (8 px). Sin gasas ni jeringas a la vista.
+TOMAS_TUBO_MONTAJE = [
+    "Tubo MORADO: llevarlo a la boca del tacho ROJO, quieto 1 s, soltarlo",
+    "Tubo AMARILLO: llevarlo a la boca del tacho ROJO, quieto 1 s, soltarlo",
+    "Tubo MORADO: llevarlo a la boca del tacho COMUN y soltarlo",
+    "Tubo AMARILLO: llevarlo a la boca del tacho COMUN y soltarlo",
+    "Los DOS tubos en la mano, caminando entre la camara y los tachos",
+    "Un tubo en cada mano a la altura de la cintura, junto a los tachos, girandolos",
+]
+LISTAS = {"general": TOMAS, "cuerpo": TOMAS_CUERPO, "objeto": TOMAS_OBJETO, "tubo": TOMAS_TUBO,
+          "prueba": TOMAS_PRUEBA, "tubo-montaje": TOMAS_TUBO_MONTAJE,
+          "tubo-piso": TOMAS_TUBO_PISO, "tubo-agarres": TOMAS_TUBO_AGARRES,
+          "tubo-no": TOMAS_TUBO_NO, "tachos": TOMAS_TACHOS}
 
 
 def main() -> int:
@@ -76,7 +166,7 @@ def main() -> int:
     ap.add_argument("--fps", type=float, default=30)
     ap.add_argument("--tomas", choices=sorted(LISTAS), default="general",
                     help="Lista de tomas sugeridas: general (gasa), cuerpo (gasa delante del torso), "
-                         "objeto (cualquier otro objeto: jeringa, curita…)")
+                         "objeto (cualquier otro objeto: jeringa, curita…), tubo (tubos de muestra)")
     args = ap.parse_args()
 
     import cv2

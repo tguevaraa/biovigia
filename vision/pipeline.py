@@ -38,6 +38,18 @@ from .zonas_dinamicas import ZonasDinamicas
 
 log = logging.getLogger("vision.pipeline")
 
+
+def es_el_tacho(d: Deteccion, tachos: list[Deteccion]) -> bool:
+    """Un «residuo» que cubre casi todo un tacho es el tacho mismo (la jeringa-v0.8 marcaba
+    el tacho rojo entero como jeringa). Un residuo de verdad es mucho más chico que el tacho."""
+    area = max((d.x1 - d.x0) * (d.y1 - d.y0), 1e-6)
+    for t in tachos:
+        ix = max(0.0, min(d.x1, t.x1) - max(d.x0, t.x0))
+        iy = max(0.0, min(d.y1, t.y1) - max(d.y0, t.y0))
+        if ix * iy > 0.5 * area and area > 0.4 * (t.x1 - t.x0) * (t.y1 - t.y0):
+            return True
+    return False
+
 COLOR_ZONA = {ROJO: (40, 40, 220), COMUN: (230, 230, 230)}
 NOMBRE_ZONA = {ROJO: "Recipiente rojo", COMUN: "Recipiente comun"}
 UMBRAL_DIBUJO = 0.35  # personas y tachos en la vista previa
@@ -51,6 +63,9 @@ class ServicioVision:
         self.config = config
         self.fuente = fuente
         self.detector = detector
+        # Lo que las reglas siguen como residuo: la gasa y, con el detector compuesto, los
+        # objetos extra (tubos, jeringas…).
+        self.residuos = set(getattr(detector, "residuos", (GASA,)))
         self.cola = cola
         self.publicador = publicador
         self.al_confirmar = al_confirmar
@@ -60,7 +75,8 @@ class ServicioVision:
                                        config.alto)
         # Zonas detectadas: salen de los tachos que el modelo ve en cada fotograma, así
         # siguen al tacho si lo mueven. Las zonas fijas quedan para el detector de desarrollo.
-        self.zonas_dinamicas = (ZonasDinamicas(config.ancho, config.alto)
+        self.zonas_dinamicas = (ZonasDinamicas(config.ancho, config.alto,
+                                               margen_arriba=config.margen_zona)
                                 if config.zonas_detectadas else None)
         self._sin_tachos_desde: Optional[float] = None
         self.disparador = self._crear_disparador()
@@ -160,7 +176,11 @@ class ServicioVision:
             self._aviso_sin_zonas = True
 
         detecciones = self.detector.detectar(f.imagen)
-        gasas = [d for d in detecciones if d.clase == GASA]
+        tachos = [d for d in detecciones if d.clase in (RECIPIENTE_ROJO, RECIPIENTE_COMUN)]
+        detecciones = [d for d in detecciones
+                       if d.clase not in self.residuos or not es_el_tacho(d, tachos)]
+        gasas = [d for d in detecciones if d.clase in self.residuos
+                 and d.confianza >= self.config.umbrales_clase.get(d.clase, 0.0)]
         if self.zonas_dinamicas is not None:
             self.motor.zonas = self.zonas_dinamicas.actualizar(detecciones, f.t)
             self._vigilar_tachos(f.t)
@@ -266,9 +286,10 @@ class ServicioVision:
         umbral_gasa = self.config.parametros.umbral_confianza
         visibles = quitar_contenidas([
             d for d in detecciones
-            if d.confianza >= (umbral_gasa if d.clase == GASA else UMBRAL_DIBUJO)])
+            if d.confianza >= (umbral_gasa if d.clase in self.residuos else UMBRAL_DIBUJO)])
         for d in visibles:
             color = ((80, 200, 80) if d.clase == GASA else
+                     (200, 80, 255) if d.clase in self.residuos else
                      (0, 165, 255) if d.clase == MANO else
                      (255, 170, 0) if d.clase == PERSONA else (180, 180, 0))
             cv2.rectangle(lienzo, (int(d.x0), int(d.y0)), (int(d.x1), int(d.y1)), color, 2)

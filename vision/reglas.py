@@ -54,6 +54,7 @@ class Observacion:
     confianza: float
     area: float
     centro: tuple[float, float]
+    clase: str = "gasa"
 
 
 @dataclass
@@ -134,11 +135,15 @@ class ReglaKdeN(ReglaConfirmacion):
     def decidir(self, h: Historial, p: ParametrosReglas, motivo: str) -> Optional[Decision]:
         if not h.observaciones:
             return None
-        zona = h.ultima.zona
-        if zona is None:
+        if h.ultima.zona is None:
             return None  # la trayectoria no terminó dentro de un recipiente
         ventana = h.ultimas(p.n_confirmacion)
-        conteo = Counter(o.zona for o in ventana)
+        conteo = Counter(o.zona for o in ventana if o.zona is not None)
+        # El recipiente es el más visto en la ventana, no el del último cuadro: con K=1 un
+        # salto suelto de la caja hacia el tacho vecino cambiaba el recipiente del evento.
+        # Empate: gana el más reciente.
+        orden = [o.zona for o in reversed(ventana) if o.zona is not None]
+        zona = max(conteo, key=lambda z: (conteo[z], -orden.index(z)))
         if conteo[zona] < min(p.k_confirmacion, p.n_confirmacion):
             return None  # pasó cerca, pero no lo bastante dentro
         rasgos = rasgos_de(h, zona, p, motivo)
@@ -208,7 +213,7 @@ class MotorConfirmacion:
         self.p = parametros
         self.regla = regla or ReglaKdeN()
         self.ancho, self.alto = ancho, alto
-        self.seguidor = Seguidor(max_distancia_px=0.14 * ancho,
+        self.seguidor = Seguidor(max_distancia_px=0.10 * ancho,
                                  max_perdida_s=parametros.ventana_confirmacion_s)
         self.historiales: dict[int, Historial] = {}
         self.memoria: list[_Recuerdo] = []
@@ -272,7 +277,7 @@ class MotorConfirmacion:
                               vio_mano=not self.exige_mano or self._mano_reciente(t))
                 self.historiales[pista.id] = h
             h.observaciones.append(Observacion(t, momento, zona, det.confianza, det.area,
-                                               det.centro))
+                                               det.centro, det.clase))
             h.desplazamiento_max = max(h.desplazamiento_max, math.hypot(
                 det.centro[0] - h.primera.centro[0], det.centro[1] - h.primera.centro[1]))
             self._actualizar_mano(h, zona, t)
@@ -291,6 +296,11 @@ class MotorConfirmacion:
                     confirmados.append(c)
                 elif h.vio_mano:
                     self.descartadas += 1
+                    if len(h.observaciones) >= 3:
+                        log.info("Pista %s (%s) sin descarte: %d obs., %d en zona, termina en %s (%.0f, %.0f)",
+                                 h.pista_id, h.ultima.clase, len(h.observaciones),
+                                 sum(o.zona is not None for o in h.observaciones), h.ultima.zona or "fuera",
+                                 *h.ultima.centro)
                 else:
                     self.sin_mano += 1
             del self.historiales[pid]
@@ -314,8 +324,40 @@ class MotorConfirmacion:
             return None  # todavía se está moviendo
         return self._confirmar(h, "permanencia")
 
+    def _por_caida(self, h: Historial) -> Optional[Decision]:
+        """El objeto venía bajando y desapareció justo encima de un recipiente."""
+        if self.p.alcance_caida <= 0 or h.ultima.zona is not None or len(h.observaciones) < 3:
+            return None
+        clases = [o.clase for o in h.observaciones]
+        if max(set(clases), key=clases.count) not in self.p.clases_caida:
+            return None
+        ultima = h.ultima
+        recientes = [o for o in h.observaciones if ultima.t - o.t <= 0.4]
+        if ultima.centro[1] - recientes[0].centro[1] < 0.015 * self.alto:
+            return None  # no estaba cayendo (sostenido en el aire o subiendo)
+        x, y = ultima.centro[0] / self.ancho, ultima.centro[1] / self.alto
+        mejor = None
+        for z in self.zonas:
+            xs = [px for px, _ in z.puntos]
+            ys = [py for _, py in z.puntos]
+            arriba = min(ys)
+            alcance = self.p.alcance_caida * (max(ys) - arriba)
+            if min(xs) <= x <= max(xs) and arriba - alcance <= y < arriba:
+                if mejor is None or arriba - y < mejor[0]:
+                    mejor = (arriba - y, z.tipo)
+        if mejor is None:
+            return None
+        zona = mejor[1]
+        rasgos = rasgos_de(h, zona, self.p, "caida")
+        ventana = h.ultimas(self.p.n_confirmacion)
+        rasgos["confianza_media"] = round(sum(o.confianza for o in ventana) / len(ventana), 3)
+        rasgos["regla"] = "caida-proyectada"
+        return Decision(zona, rasgos["confianza_media"], rasgos)
+
     def _confirmar(self, h: Historial, motivo: str) -> Optional[Confirmado]:
         decision = self.regla.decidir(h, self.p, motivo)
+        if decision is None and motivo == "desaparicion":
+            decision = self._por_caida(h)
         if decision is None:
             return None
         if h.desplazamiento_max < self.p.desplazamiento_min * self.ancho:
@@ -327,6 +369,9 @@ class MotorConfirmacion:
             log.debug("Pista %s ignorada: ya estaba en %s", h.pista_id, decision.zona)
             return None
         h.cerrada = True
+        # Qué residuo era: la clase más vista en la trayectoria (gasa, tubo, jeringa…).
+        clases = [o.clase for o in h.observaciones]
+        decision.rasgos["objeto"] = max(set(clases), key=clases.count)
         if self.exige_mano:
             decision.rasgos.update(mano_detectada=True,
                                    confianza_mano=round(h.confianza_mano, 3))

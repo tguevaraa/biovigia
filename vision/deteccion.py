@@ -224,7 +224,7 @@ class ParteYOLO:
     el de tachos → «recipiente», el de COCO → «persona»); ``clases_coco`` limita qué clases
     del modelo se usan (en COCO, la 0 es «person»)."""
 
-    def __init__(self, ruta: Path, clase: str, imgsz: int = 640,
+    def __init__(self, ruta: Path, clase: str | None, imgsz: int = 640,
                  clases_coco: list[int] | None = None) -> None:
         ruta = Path(ruta)
         if not ruta.exists():
@@ -235,7 +235,8 @@ class ParteYOLO:
             raise ErrorModelo.sin_ultralytics(ruta) from exc
         self.modelo = YOLO(str(ruta))
         self.nombre = ruta.stem
-        self.clase = clase
+        # Sin clase fija (tubos, jeringas…): la que diga el modelo, que tiene una sola.
+        self.clase = clase or str(self.modelo.names[0])
         self.imgsz = imgsz
         self.clases_coco = clases_coco
 
@@ -260,8 +261,11 @@ class DetectorCompuesto:
 
     detecta_mano = False
 
-    def __init__(self, partes: list, umbral: float, umbral_rojo: float = 0.25) -> None:
+    def __init__(self, partes: list, umbral: float, umbral_rojo: float = 0.25,
+                 residuos: tuple[str, ...] = (GASA,)) -> None:
         self.partes = partes
+        # Clases que las reglas siguen como residuo (la gasa y los objetos extra).
+        self.residuos = residuos
         self.umbral = umbral
         self.umbral_rojo = umbral_rojo
         if not any(p.clase == GASA for p in partes):
@@ -272,8 +276,11 @@ class DetectorCompuesto:
     @classmethod
     def desde_rutas(cls, gasas: Path, tachos: Path | None, personas: Path | None,
                     umbral: float, imgsz: int = 640, umbral_rojo: float = 0.25,
-                    ) -> "DetectorCompuesto":
+                    objetos: tuple[Path, ...] = ()) -> "DetectorCompuesto":
         partes = [ParteYOLO(gasas, GASA, imgsz)]
+        # Otros residuos (tubos, jeringas…): un modelo de una clase cada uno.
+        extra = [ParteYOLO(ruta, None, imgsz) for ruta in objetos]
+        partes += extra
         if tachos:
             partes.append(ParteYOLO(tachos, RECIPIENTE, imgsz))
         else:
@@ -283,7 +290,8 @@ class DetectorCompuesto:
             partes.append(ParteYOLO(personas, PERSONA, imgsz, clases_coco=[0]))
         elif personas:
             log.warning("No existe el modelo de personas %s; se sigue sin él.", personas)
-        return cls(partes, umbral, umbral_rojo)
+        return cls(partes, umbral, umbral_rojo,
+                   residuos=(GASA, *dict.fromkeys(p.clase for p in extra)))
 
     @property
     def nombre(self) -> str:
@@ -309,7 +317,8 @@ def crear_detector(tipo: str, ruta_modelo: Path, umbral: float, imgsz: int = 640
         c = compuesto or {}
         return DetectorCompuesto.desde_rutas(c.get("gasas") or ruta_modelo, c.get("tachos"),
                                              c.get("personas"), umbral, imgsz,
-                                             c.get("umbral_rojo", 0.25))
+                                             c.get("umbral_rojo", 0.25),
+                                             tuple(c.get("objetos") or ()))
     if tipo == "movimiento":
         log.warning("Usando el detector de DESARROLLO por movimiento. Los eventos llevarán el "
                     "modelo 'dev-movimiento-v0'. Para la prueba de aceptación usa el modelo "

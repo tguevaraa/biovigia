@@ -30,6 +30,12 @@ class Pista:
 class Seguidor:
     max_distancia_px: float = 90.0
     max_perdida_s: float = 1.5
+    # Tras este hueco, lo que aparezca es otro objeto (no se une a la pista vieja).
+    max_hueco_asociar_s: float = 0.7
+    # Un modelo puede soltar el objeto y otro tomarlo justo después (el tubo en la boca del
+    # tacho lo ve el modelo de jeringas). Se acepta el cambio de clase solo si es inmediato
+    # y cerca; la misma clase siempre gana (su costo no lleva el recargo).
+    max_hueco_cambio_clase_s: float = 0.35
     pistas: dict[int, Pista] = field(default_factory=dict)
     _contador: itertools.count = field(default_factory=lambda: itertools.count(1))
 
@@ -43,9 +49,18 @@ class Seguidor:
             for j, det in enumerate(detecciones):
                 dx, dy = det.centro
                 distancia = math.hypot(px - dx, py - dy)
-                # La compuerta crece con el tiempo perdido: la gasa en caída se mueve rápido.
                 hueco = max(0.0, t - pista.ultima_t)
-                if distancia <= self.max_distancia_px * (1 + 2 * hueco):
+                if det.clase != pista.deteccion.clase:
+                    # Otra clase: solo un traspaso inmediato y cercano, nunca una
+                    # detección falsa lejana (la jeringa en la camiseta).
+                    if hueco <= self.max_hueco_cambio_clase_s and distancia <= self.max_distancia_px:
+                        pares.append((distancia + self.max_distancia_px * 3, i, j))
+                    continue
+                # La compuerta crece con el tiempo perdido: la gasa en caída se mueve rápido.
+                if hueco > self.max_hueco_asociar_s:
+                    continue
+                # Hasta el doble: más allá se unían detecciones falsas lejanas.
+                if distancia <= self.max_distancia_px * (1 + 2 * min(hueco, 0.5)):
                     pares.append((distancia, i, j))
         pares.sort()
         usadas_p, usadas_d = set(), set()

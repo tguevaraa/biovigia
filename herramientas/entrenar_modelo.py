@@ -70,6 +70,17 @@ def main() -> int:
     ap.add_argument("--luz", choices=["normal", "fuerte"], default="normal",
                     help="Aumentos de iluminación: fuerte = brillo ±70 %%, saturación ±80 %% y "
                          "tono ±3 %% (para cámaras sin exposición fija o salas con luz variable)")
+    ap.add_argument("--rotacion", type=float, default=0.0,
+                    help="Grados de giro al azar en el entrenamiento (0 = sin giro). La cámara no "
+                         "rota, pero un objeto largo que cae o queda tirado (tubo, jeringa) sí: "
+                         "para esos usar 45")
+    ap.add_argument("--volteo-vertical", type=float, default=0.0,
+                    help="Probabilidad de dar vuelta la imagen de arriba abajo. Para objetos que "
+                         "se agarran al revés (un tubo con la tapa abajo) usar 0,5. A diferencia de "
+                         "--rotacion, la caja sigue ajustada al objeto")
+    ap.add_argument("--escala", type=float, default=0.3,
+                    help="Cuánto se agranda o achica cada imagen al azar (0,3 = ±30 %%). Con 0,5 "
+                         "aparecen más objetos chicos, como los que están lejos")
     ap.add_argument("--solo-evaluar", type=pathlib.Path, help="Evalúa unos pesos ya entrenados")
     ap.add_argument("--medir-fps", action="store_true", help="Mide fps en este equipo (RNF-09)")
     args = ap.parse_args()
@@ -105,8 +116,9 @@ def main() -> int:
         modelo.train(data=str(args.datos), epochs=args.epocas, imgsz=args.imgsz,
                      batch=args.lote, device=args.dispositivo, project=str(RAIZ / "datos" / "runs"),
                      name=args.nombre, exist_ok=True, workers=args.trabajadores,
-                     # Aumentaciones geométricas moderadas: la cámara no rota.
-                     degrees=0.0, flipud=0.0, fliplr=0.5, mosaic=1.0, scale=0.3, **luz)
+                     # Aumentaciones geométricas moderadas: la cámara no rota (salvo --rotacion).
+                     degrees=args.rotacion, flipud=args.volteo_vertical, fliplr=0.5, mosaic=1.0,
+                     scale=args.escala, **luz)
         mejores = RAIZ / "datos" / "runs" / args.nombre / "weights" / "best.pt"
         destino = RAIZ / "vision" / "modelos" / f"{args.nombre}.pt"
         shutil.copy2(mejores, destino)

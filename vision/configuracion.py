@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -51,6 +52,13 @@ class ParametrosReglas:
     # Una gasa que se movió menos que esto (fracción del ancho) en toda su trayectoria ya
     # estaba dentro del recipiente: no es un descarte nuevo.
     desplazamiento_min: float = 0.08
+    # Caída proyectada: un objeto que venía bajando y desaparece encima de un recipiente,
+    # dentro de su ancho y hasta esta fracción del alto de la zona por encima de ella, cayó
+    # en él. El tubo es chico y rápido: el modelo lo pierde antes de la boca. 0 = no.
+    alcance_caida: float = 0.5
+    # Solo para estas clases: la gasa y la jeringa se siguen hasta la zona, y una jeringa
+    # sostenida a la cintura encima de un tacho, al perderse, parecía caer en él.
+    clases_caida: tuple = ("tubo",)
     # Disparador por mano (docs/deteccion-dos-etapas.md). Una gasa solo puede confirmarse
     # si hubo una mano cerca de los recipientes como mucho este tiempo antes o después
     # de que apareciera.
@@ -87,11 +95,18 @@ class Configuracion:
     modelo: Path = RAIZ_VISION / "modelos" / "biovigia-gasa-v0.1.pt"
     nombre_modelo: str = ""
     # Detector compuesto (docs/entrenar-modelos.md): cada modelo reconoce un solo objeto.
-    modelo_gasas: Path = RAIZ_VISION / "modelos" / "biovigia-gasas-v0.5.pt"
-    modelo_tachos: Path | None = RAIZ_VISION / "modelos" / "biovigia-tachos-v0.2.pt"
+    modelo_gasas: Path = RAIZ_VISION / "modelos" / "biovigia-gasas-v0.6.pt"
+    modelo_tachos: Path | None = RAIZ_VISION / "modelos" / "biovigia-tachos-v0.4.pt"
     modelo_personas: Path | None = RAIZ_VISION / "modelos" / "yolo11n-coco.pt"
+    # Otros residuos, un modelo de una clase cada uno (tubos, jeringas…). Se siguen igual que
+    # la gasa y el evento lleva el objeto en sus rasgos.
+    modelos_objetos: list[Path] = field(default_factory=list)
     # Fracción de la caja de un tacho que debe ser roja para llamarlo «rojo».
     umbral_rojo: float = 0.25
+    # Cuánto sube la zona sobre la boca del tacho, en alturas del tacho (0,5 = media altura).
+    margen_zona: float = 0.5
+    # Umbral propio de algunas clases, por encima del general («jeringa=0.5;tubo=0.4»).
+    umbrales_clase: dict = field(default_factory=dict)
     # detectadas: las zonas salen de los tachos que el modelo ve en cada fotograma (siguen
     # al tacho si lo mueven) · fijas: polígonos de PAN-09 o vision/zonas.json (solo para
     # el detector de desarrollo, que no reconoce tachos).
@@ -147,7 +162,8 @@ class Configuracion:
     @property
     def modelos_compuesto(self) -> dict:
         return {"gasas": self.modelo_gasas, "tachos": self.modelo_tachos,
-                "personas": self.modelo_personas, "umbral_rojo": self.umbral_rojo}
+                "personas": self.modelo_personas, "umbral_rojo": self.umbral_rojo,
+                "objetos": self.modelos_objetos}
 
     @property
     def es_archivo(self) -> bool:
@@ -173,7 +189,12 @@ def desde_entorno() -> Configuracion:
         if f"BIOVIGIA_MODELO_{nombre.upper()}" in os.environ:
             valor = _env(f"MODELO_{nombre.upper()}")
             setattr(c, f"modelo_{nombre}", _ruta(valor) if valor else None)
+    c.modelos_objetos = [_ruta(r.strip()) for r in re.split(r"[;,]", _env("MODELOS_OBJETOS", ""))
+                         if r.strip()]
     c.umbral_rojo = float(_env("UMBRAL_ROJO", str(c.umbral_rojo)))
+    c.margen_zona = float(_env("MARGEN_ZONA", str(c.margen_zona)))
+    c.umbrales_clase = {k.strip(): float(v) for k, v in (par.split("=") for par in
+                        re.split(r"[;,]", _env("UMBRALES_CLASE", "")) if "=" in par)}
     c.zonas = (_env("MODO_ZONAS", c.zonas).strip().lower() or "detectadas")
     c.imgsz = int(_env("IMGSZ", str(c.imgsz)))
     c.captura_ancho = int(_env("CAPTURA_ANCHO", str(c.captura_ancho)) or 0)
@@ -195,6 +216,8 @@ def desde_entorno() -> Configuracion:
     p.n_confirmacion = int(_env("N", str(p.n_confirmacion)))
     p.fps_muestreo = int(_env("FPS", str(p.fps_muestreo)))
     p.permanencia_s = float(_env("PERMANENCIA_S", str(p.permanencia_s)))
+    p.alcance_caida = float(_env("ALCANCE_CAIDA", str(p.alcance_caida)))
+    p.clases_caida = tuple(c.strip() for c in re.split(r"[;,]", _env("CLASES_CAIDA", ",".join(p.clases_caida))) if c.strip())
     p.gracia_mano_s = float(_env("GRACIA_MANO_S", str(p.gracia_mano_s)))
     p.margen_mano = float(_env("MARGEN_MANO", str(p.margen_mano)))
     return c
