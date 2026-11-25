@@ -130,14 +130,19 @@ class FuenteNula:
 
 
 class PruebasDescarteConZonasDetectadas(unittest.TestCase):
-    def correr(self, guion):
+    def correr(self, guion, tapada_desde=None):
         config = Configuracion(detector="compuesto")
         servicio = ServicioVision(config, FuenteNula(), DetectorGuion(guion), ConjuntoZonas())
+        self.servicio = servicio
         inicio = datetime(2026, 11, 22, 10, 0, tzinfo=timezone.utc)
-        imagen = np.zeros((480, 640, 3), np.uint8)
+        # Una escena con textura: una imagen negra se toma como lente tapado.
+        franjas = ((np.arange(640) // 40) % 2 * 160 + 40).astype(np.uint8)
+        imagen = np.tile(franjas[None, :, None], (480, 1, 3))
+        negra = np.zeros_like(imagen)
         dt = 1 / 15
         for i in range(len(guion) + 40):                   # 40 fotogramas más: la ventana
-            servicio.procesar(Fotograma(imagen, i * dt, inicio + timedelta(seconds=i * dt), i))
+            img = negra if tapada_desde is not None and i >= tapada_desde else imagen
+            servicio.procesar(Fotograma(img, i * dt, inicio + timedelta(seconds=i * dt), i))
         return servicio.eventos
 
     def guion_descarte(self, x_rojo, x_comun, destino_x):
@@ -150,6 +155,24 @@ class PruebasDescarteConZonasDetectadas(unittest.TestCase):
             guion.append(tachos + [Deteccion(GASA, 0.9, destino_x, 300, destino_x + 20, 320)])
         guion += [list(tachos) for _ in range(20)]          # entró: ya no se ve
         return guion
+
+    def test_una_mano_tapa_los_tachos_y_la_gasa_no_se_registra(self):
+        # La gasa baja hasta el rojo y en ese momento algo tapa la vista: los tachos dejan
+        # de verse junto con la gasa. No es un descarte comprobado.
+        guion = self.guion_descarte(100, 400, 130)
+        corte = next(i for i, d in enumerate(guion) if any(x.clase == GASA for x in d)) + 15
+        guion = guion[:corte] + [[] for _ in range(60)]
+        eventos = self.correr(guion)
+        self.assertEqual(eventos, [])
+        self.assertTrue(self.servicio.obstruida)
+        self.assertEqual(self.servicio.no_registrados, 1)
+
+    def test_lente_tapado_no_registra(self):
+        guion = self.guion_descarte(100, 400, 130)
+        corte = next(i for i, d in enumerate(guion) if any(x.clase == GASA for x in d)) + 15
+        eventos = self.correr(guion, tapada_desde=corte)
+        self.assertEqual(eventos, [])
+        self.assertEqual(self.servicio.motivo_obstruccion, "camara tapada")
 
     def test_descarte_en_el_rojo(self):
         eventos = self.correr(self.guion_descarte(100, 400, 130))

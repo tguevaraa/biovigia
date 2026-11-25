@@ -28,6 +28,10 @@
 {% elif not v.camara_conectada %}
 <div class="bv-aviso bv-off mb-3" role="alert"><i class="bi bi-camera-video-off" aria-hidden="true"></i>
   <div><strong>La cámara de {{ v.box }} está desconectada.</strong> El lapso se registra como no observado.</div></div>
+{% elif v.vista_obstruida %}
+<div class="bv-aviso bv-off mb-3" role="alert"><i class="bi bi-eye-slash" aria-hidden="true"></i>
+  <div><strong>Proceso no registrado en {{ v.box }}: la vista está obstruida.</strong>
+  No se ven los tachos o algo tapa la cámara. Mientras dure no se confirman descartes y el lapso se registra como no observado.</div></div>
 {% endif %}{% endfor %}
 
 <div class="row g-3 mb-4">
@@ -105,6 +109,6 @@
 <script>
   // Observer: si cambian los indicadores o el estado de un recipiente, se recarga la vista.
   BioVigIA.observar("{% url 'api:tablero' %}?fecha={{ fecha|date:'Y-m-d' }}&turno={{ turno.codigo }}",
-    (d) => JSON.stringify([d.kpis, d.recipientes, d.vision.map(v => [v.conectado, v.camara_conectada])]));
+    (d) => JSON.stringify([d.kpis, d.recipientes, d.vision.map(v => [v.conectado, v.camara_conectada, v.vista_obstruida])]));
 </script>
 {% endblock %}

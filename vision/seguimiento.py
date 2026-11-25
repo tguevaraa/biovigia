@@ -35,7 +35,7 @@ class Seguidor:
     # Un modelo puede soltar el objeto y otro tomarlo justo después (el tubo en la boca del
     # tacho lo ve el modelo de jeringas). Se acepta el cambio de clase solo si es inmediato
     # y cerca; la misma clase siempre gana (su costo no lleva el recargo).
-    max_hueco_cambio_clase_s: float = 0.35
+    max_hueco_cambio_clase_s: float = 0.7
     pistas: dict[int, Pista] = field(default_factory=dict)
     _contador: itertools.count = field(default_factory=lambda: itertools.count(1))
 

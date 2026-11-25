@@ -52,6 +52,12 @@ def es_el_tacho(d: Deteccion, tachos: list[Deteccion]) -> bool:
 
 COLOR_ZONA = {ROJO: (40, 40, 220), COMUN: (230, 230, 230)}
 NOMBRE_ZONA = {ROJO: "Recipiente rojo", COMUN: "Recipiente comun"}
+VENTANA_PREVIA = "BioVigIA - vista previa (no se graba)"
+# Vista obstruida: sin ningún tacho a la vista este tiempo, o la imagen tapada (oscura o
+# sin textura), el proceso no se registra: el lapso queda como no observado y no se
+# confirman descartes (una mano que tapa el tacho «hace desaparecer» la gasa).
+OBSTRUCCION_S = 2.0
+CONFIANZA_TACHO_VISTO = 0.15
 UMBRAL_DIBUJO = 0.35  # personas y tachos en la vista previa
 
 
@@ -66,6 +72,7 @@ class ServicioVision:
         # Lo que las reglas siguen como residuo: la gasa y, con el detector compuesto, los
         # objetos extra (tubos, jeringas…).
         self.residuos = set(getattr(detector, "residuos", (GASA,)))
+        self._ventana_lista = False
         self.cola = cola
         self.publicador = publicador
         self.al_confirmar = al_confirmar
@@ -78,7 +85,11 @@ class ServicioVision:
         self.zonas_dinamicas = (ZonasDinamicas(config.ancho, config.alto,
                                                margen_arriba=config.margen_zona)
                                 if config.zonas_detectadas else None)
-        self._sin_tachos_desde: Optional[float] = None
+        self._ultimo_tacho_t: Optional[float] = None
+        self.obstruida = False
+        self._despejada_desde: Optional[float] = None
+        self.motivo_obstruccion = ""
+        self.no_registrados = 0
         self.disparador = self._crear_disparador()
         self.motor.exige_mano = self.disparador is not None
         self._mano = SIN_MANO
@@ -167,8 +178,6 @@ class ServicioVision:
     def procesar(self, f: Fotograma) -> bool:
         """Procesa un fotograma. Devuelve False si el usuario pidió salir desde la ventana."""
         self._ultimo = f
-        if self.publicador:
-            self.publicador.observacion.observando(f.momento)
         if (self.zonas_dinamicas is None and not self.motor.zonas
                 and not self._aviso_sin_zonas):
             log.warning("No hay zonas definidas: el sistema detecta pero no puede confirmar "
@@ -183,15 +192,27 @@ class ServicioVision:
                  and d.confianza >= self.config.umbrales_clase.get(d.clase, 0.0)]
         if self.zonas_dinamicas is not None:
             self.motor.zonas = self.zonas_dinamicas.actualizar(detecciones, f.t)
-            self._vigilar_tachos(f.t)
         else:
             self._verificar_alineacion(detecciones)
+        self._vigilar_obstruccion(f, tachos)
+        if self.publicador and not self.obstruida:
+            self.publicador.observacion.observando(f.momento)
         self._guardar_recortes(f, gasas)
 
         if self.disparador is not None:
             self._mano = self.disparador.evaluar(detecciones, self.motor.zonas)
         for confirmado in self.motor.procesar(gasas, f.t, f.momento, self._mano.activa,
                                               self._mano.confianza):
+            # Solo cuenta si los tachos se siguieron viendo después de que el objeto
+            # desapareció: si se dejan de ver junto con él, algo tapó la vista.
+            tapado = (self.zonas_dinamicas is not None and
+                      self._ultimo_tacho_t is not None and
+                      self._ultimo_tacho_t < confirmado.t + 0.3)
+            if self.obstruida or tapado:
+                self.no_registrados += 1
+                log.warning("Descarte en %s NO registrado: vista obstruida (%s)",
+                            confirmado.zona, self.motivo_obstruccion or "tachos tapados")
+                continue
             self._emitir(confirmado)
 
         if self.config.mostrar:
@@ -209,23 +230,47 @@ class ServicioVision:
                 if recorte is not None:
                     self._recortes[zona_tipo] = recorte
 
-    def _vigilar_tachos(self, t: float) -> None:
-        """Con zonas detectadas, «alineadas» significa que se ve al menos un tacho. Si no se
-        ve ninguno durante unos segundos (los taparon, se movió la cámara), se avisa."""
-        visible = self.zonas_dinamicas.alguno_visible
-        if visible:
-            if self._sin_tachos_desde is not None and self._zonas_alineadas is False:
-                log.info("Se vuelven a ver los tachos: %s", ", ".join(
-                    NOMBRE_ZONA[z.tipo] for z in self.motor.zonas))
-            self._sin_tachos_desde = None
-            self._zonas_alineadas = True
-            return
-        if self._sin_tachos_desde is None:
-            self._sin_tachos_desde = t
-        if t - self._sin_tachos_desde >= 5.0 and self._zonas_alineadas is not False:
-            log.warning("No se ve ningún tacho hace 5 s: no se pueden confirmar descartes. "
-                        "¿Los taparon o se movió la cámara?")
-            self._zonas_alineadas = False
+    @staticmethod
+    def _imagen_tapada(imagen: np.ndarray) -> bool:
+        """Lente tapado o cámara contra algo: casi negro o sin textura."""
+        chica = cv2.cvtColor(cv2.resize(imagen, (64, 36), interpolation=cv2.INTER_AREA),
+                             cv2.COLOR_BGR2GRAY)
+        return float(chica.mean()) < 25 or float(chica.std()) < 12
+
+    def _vigilar_obstruccion(self, f: Fotograma, tachos: list[Deteccion]) -> None:
+        """Decide si la vista está obstruida. Mira lo que el modelo ve en este fotograma, no
+        las zonas, que se retienen varios segundos cuando un tacho deja de verse."""
+        if self._ultimo_tacho_t is None or any(
+                d.confianza >= CONFIANZA_TACHO_VISTO for d in tachos):
+            self._ultimo_tacho_t = f.t
+        # Sin tildes: OpenCV no las dibuja en la vista previa.
+        motivo = ""
+        if self._imagen_tapada(f.imagen):
+            motivo = "camara tapada"
+        elif self.zonas_dinamicas is not None and f.t - self._ultimo_tacho_t >= OBSTRUCCION_S:
+            motivo = "no se ven los tachos"
+        elif self.obstruida:
+            # Histéresis: para despejar, los tachos se tienen que ver seguidos 1 s (un
+            # cuadro suelto con un tacho no basta; si no, el estado parpadea).
+            if f.t - self._ultimo_tacho_t > 0.5:
+                self._despejada_desde = None
+            elif self._despejada_desde is None:
+                self._despejada_desde = f.t
+            if self._despejada_desde is None or f.t - self._despejada_desde < 1.0:
+                motivo = self.motivo_obstruccion
+        obstruida = bool(motivo)
+        if obstruida and not self.obstruida:
+            self._despejada_desde = None
+            log.warning("Vista obstruida (%s): el proceso no se registra hasta despejarla.",
+                        motivo)
+            if self.publicador:
+                self.publicador.observacion.interrumpido()
+        elif self.obstruida and not obstruida:
+            log.info("Vista despejada: se vuelve a registrar (%s)", ", ".join(
+                NOMBRE_ZONA[z.tipo] for z in self.motor.zonas) or "sin zonas")
+        self.obstruida, self.motivo_obstruccion = obstruida, motivo
+        if self.zonas_dinamicas is not None:
+            self._zonas_alineadas = not obstruida
 
     def _verificar_alineacion(self, detecciones: list[Deteccion]) -> None:
         """Si el detector ve los recipientes fuera de sus zonas, la cámara se movió."""
@@ -275,12 +320,15 @@ class ServicioVision:
 
     def _mostrar(self, f: Fotograma, detecciones: list[Deteccion]) -> bool:
         lienzo = f.imagen.copy()
+        # Texto y líneas proporcionales al tamaño de trabajo (640 × 480 o 1920 × 1080).
+        k = max(1.0, f.ancho / 640)
+        grosor, fuente = max(2, round(2 * k)), 0.5 * k
         for zona in self.motor.zonas:
             pts = np.array(zona.puntos_px(f.ancho, f.alto), dtype=np.int32)
-            cv2.polylines(lienzo, [pts], True, COLOR_ZONA[zona.tipo], 2)
+            cv2.polylines(lienzo, [pts], True, COLOR_ZONA[zona.tipo], grosor)
             x, y = pts.min(axis=0)
-            cv2.putText(lienzo, NOMBRE_ZONA[zona.tipo], (int(x), max(14, int(y) - 6)),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, COLOR_ZONA[zona.tipo], 1, cv2.LINE_AA)
+            cv2.putText(lienzo, NOMBRE_ZONA[zona.tipo], (int(x), max(int(14 * k), int(y) - int(6 * k))),
+                        cv2.FONT_HERSHEY_SIMPLEX, fuente, COLOR_ZONA[zona.tipo], grosor // 2, cv2.LINE_AA)
         # Solo lo que cuenta: el detector entrega cajas desde confianza muy baja para que las
         # reglas puedan cambiar el umbral en caliente, pero dibujarlas todas confunde.
         umbral_gasa = self.config.parametros.umbral_confianza
@@ -292,9 +340,9 @@ class ServicioVision:
                      (200, 80, 255) if d.clase in self.residuos else
                      (0, 165, 255) if d.clase == MANO else
                      (255, 170, 0) if d.clase == PERSONA else (180, 180, 0))
-            cv2.rectangle(lienzo, (int(d.x0), int(d.y0)), (int(d.x1), int(d.y1)), color, 2)
-            cv2.putText(lienzo, f"{d.clase} {d.confianza:.2f}", (int(d.x0), int(d.y0) - 4),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1, cv2.LINE_AA)
+            cv2.rectangle(lienzo, (int(d.x0), int(d.y0)), (int(d.x1), int(d.y1)), color, grosor)
+            cv2.putText(lienzo, f"{d.clase} {d.confianza:.2f}", (int(d.x0), int(d.y0) - int(4 * k)),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.9 * fuente, color, grosor // 2, cv2.LINE_AA)
         fps = self.fuente.fps_medido
         pie = f"{self.config.box} | {fps:.1f} fps | eventos: {len(self.eventos)}" if fps else \
             f"{self.config.box} | eventos: {len(self.eventos)}"
@@ -302,7 +350,21 @@ class ServicioVision:
             pie += " | mano: " + ("SI" if self._mano.activa else "no")
         if self.publicador:
             pie += " | servidor: " + ("conectado" if self.publicador.conectado else "SIN CONEXION")
-        cv2.putText(lienzo, pie + " | q para salir", (8, f.alto - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
-        cv2.imshow("BioVigIA - vista previa (no se graba)", lienzo)
+        if self.obstruida:
+            alto_franja = int(44 * k)
+            cv2.rectangle(lienzo, (0, 0), (f.ancho, alto_franja), (0, 0, 200), -1)
+            cv2.putText(lienzo, f"PROCESO NO REGISTRADO: {self.motivo_obstruccion}",
+                        (int(10 * k), int(30 * k)), cv2.FONT_HERSHEY_SIMPLEX, 1.1 * fuente,
+                        (255, 255, 255), grosor, cv2.LINE_AA)
+        if self.no_registrados:
+            pie += f" | no registrados: {self.no_registrados}"
+        cv2.putText(lienzo, pie + " | q para salir", (int(8 * k), f.alto - int(10 * k)),
+                    cv2.FONT_HERSHEY_SIMPLEX, fuente, (255, 255, 255), grosor // 2, cv2.LINE_AA)
+        if not self._ventana_lista:
+            # Ventana redimensionable: a 1920 × 1080 no cabe entera con la barra de tareas.
+            cv2.namedWindow(VENTANA_PREVIA, cv2.WINDOW_NORMAL)
+            if f.ancho > 1280:
+                cv2.resizeWindow(VENTANA_PREVIA, 1280, round(1280 * f.alto / f.ancho))
+            self._ventana_lista = True
+        cv2.imshow(VENTANA_PREVIA, lienzo)
         return (cv2.waitKey(1) & 0xFF) != ord("q")

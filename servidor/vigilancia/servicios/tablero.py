@@ -97,6 +97,8 @@ def resumen_turno(fecha: date, turno: Turno) -> dict[str, Any]:
             "box": box.codigo,
             "conectado": observacion.latido_vigente(box),
             "camara_conectada": box.camara_conectada,
+            # Con zonas detectadas, False = vista obstruida (no se ve ningún tacho).
+            "vista_obstruida": box.zonas_alineadas is False,
             "fps": box.fps_medido,
             "ultimo_latido": (timezone.localtime(box.ultimo_latido).isoformat(timespec="seconds")
                               if box.ultimo_latido else None),

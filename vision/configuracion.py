@@ -197,6 +197,8 @@ def desde_entorno() -> Configuracion:
                         re.split(r"[;,]", _env("UMBRALES_CLASE", "")) if "=" in par)}
     c.zonas = (_env("MODO_ZONAS", c.zonas).strip().lower() or "detectadas")
     c.imgsz = int(_env("IMGSZ", str(c.imgsz)))
+    c.ancho = int(_env("ANCHO", str(c.ancho)) or c.ancho)
+    c.alto = int(_env("ALTO", str(c.alto)) or c.alto)
     c.captura_ancho = int(_env("CAPTURA_ANCHO", str(c.captura_ancho)) or 0)
     c.captura_alto = int(_env("CAPTURA_ALTO", str(c.captura_alto)) or 0)
     if _env("ZONAS"):
